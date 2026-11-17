@@ -21,7 +21,12 @@ public enum ResultCode {
 
     // ---------- 用户模块 1000+ ----------
     USERNAME_EXISTS(1001, "用户名已存在"),
-    EMAIL_EXISTS(1002, "邮箱已被注册");
+    EMAIL_EXISTS(1002, "邮箱已被注册"),
+
+    // ---------- 登录失败 ----------
+    LOGIN_FAILED(1003, "邮箱或密码错误"),
+    USER_NOT_EXIST(1004, "用户不存在");
+
 
     private final Integer code;
     private final String message;

@@ -23,6 +23,7 @@ public class SysUser {
     private String password;
     private LocalDateTime createTime;
     private LocalDateTime updateTime;
+    private String avatar;
 
     @TableLogic
     private Integer deleted;

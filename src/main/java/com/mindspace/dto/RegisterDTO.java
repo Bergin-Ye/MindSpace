@@ -12,6 +12,7 @@ public class RegisterDTO {
     @Size(min = 3, max = 50, message = "用户名长度必须在3到50之间")
     private String username;
 
+    @NotBlank(message = "邮箱不能为空")
     @Email(message = "邮箱格式错误")
     @Size(max = 100, message = "邮箱长度必须在100以内")
     private String email;

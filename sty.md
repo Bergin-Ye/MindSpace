@@ -1,3 +1,8 @@
+git status          # ① 看哪些文件改了
+git add .           # ② 把改动加入暂存区（. 表示当前目录全部）
+git commit -m "feat: 完成用户注册接口"   # ③ 提交到本地仓库
+git log --oneline   # ④ 看提交历史
+
 2026.11.17日学习笔记
 今日开发注册接口 result 和 错误拦截器
 1.result
