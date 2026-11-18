@@ -29,7 +29,11 @@ public enum ResultCode {
 
     // ---------- 修改密码对应的错误码 ----------
     PASSWORD_ERROR(1005, "原密码错误"),
-    PASSWORD_SAME(1006, "新密码不能与原密码相同");
+    PASSWORD_SAME(1006, "新密码不能与原密码相同"),
+
+    // ---------- 知识库 2000+ ----------
+    KB_NOT_FOUND(2001, "知识库不存在"),
+    KB_LAST_CANNOT_DELETE(2002, "至少保留一个知识库");
 
 
     private final Integer code;

@@ -16,7 +16,7 @@ import java.time.LocalDateTime;
 
 
 @Data
-//这里是允许返回给前端的用户信息 无参版本
+//定义用户VO视图类，用于返回用户信息
 public class UserVO {
     private Long id;
     private String username;
@@ -24,6 +24,7 @@ public class UserVO {
     private String avatar;
     private LocalDateTime createTime;
 
+    //方法：将SysUser实体转换为UserVO视图类
     public static UserVO from(SysUser sysUser) {
         UserVO vo = new UserVO();
         vo.setId(sysUser.getId());

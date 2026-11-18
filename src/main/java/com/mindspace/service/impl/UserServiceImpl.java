@@ -9,6 +9,7 @@ import com.mindspace.dto.UpdatePasswordDTO;
 import com.mindspace.dto.UpdateProfileDTO;
 import com.mindspace.entity.SysUser;
 import com.mindspace.mapper.SysUserMapper;
+import com.mindspace.service.KnowledgeBaseService;
 import com.mindspace.service.UserService;
 import com.mindspace.vo.LoginVO;
 import com.mindspace.vo.UserVO;
@@ -25,6 +26,7 @@ public class UserServiceImpl implements UserService {
     private final SysUserMapper sysUserMapper;
     private final PasswordEncoder passwordEncoder;
     private final JwtUtil jwtUtil;
+    private final KnowledgeBaseService knowledgeBaseService;
 
     @Override
     //开启事务 有异常回滚事务
@@ -61,6 +63,8 @@ public class UserServiceImpl implements UserService {
         user.setPassword(passwordEncoder.encode(dto.getPassword()));
         //插入数据库
         sysUserMapper.insert(user);
+        //注册成功后创建默认知识库（与用户插入在同一个事务）
+        knowledgeBaseService.createDefault(user.getId());
     }
 
     @Override
