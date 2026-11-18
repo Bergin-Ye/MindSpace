@@ -5,6 +5,8 @@ import com.mindspace.common.exception.BusinessException;
 import com.mindspace.common.result.ResultCode;
 import com.mindspace.dto.LoginDTO;
 import com.mindspace.dto.RegisterDTO;
+import com.mindspace.dto.UpdatePasswordDTO;
+import com.mindspace.dto.UpdateProfileDTO;
 import com.mindspace.entity.SysUser;
 import com.mindspace.mapper.SysUserMapper;
 import com.mindspace.service.UserService;
@@ -15,8 +17,6 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
-
-import java.util.Locale;
 
 @Service
 @RequiredArgsConstructor
@@ -93,5 +93,71 @@ public class UserServiceImpl implements UserService {
             throw new BusinessException(ResultCode.USER_NOT_EXIST);
         }
         return UserVO.from(user);
+    }
+
+    /*
+    * 更新用户信息
+    * */
+    @Override
+    public UserVO updateProfile(Long userId, UpdateProfileDTO updateProfileDTO) {
+        //判断当前用户是否存在 抛出异常
+        SysUser user = sysUserMapper.selectById(userId);
+        if(user == null){
+            throw new BusinessException(ResultCode.USER_NOT_EXIST);
+        }
+
+        //更新用户信息
+
+        //先获取传过来的用户名
+        String username = updateProfileDTO.getUsername().trim();
+        //判断数据库除了自己有没有别人用这个用户名
+        Long count = sysUserMapper.selectCount(
+                new LambdaQueryWrapper<SysUser>()
+                        .eq(SysUser::getUsername, username)
+                        .ne(SysUser::getId, userId));
+        //有重复抛出异常
+        if(count > 0){
+            throw  new BusinessException(ResultCode.USERNAME_EXISTS);
+        }
+
+        //更新数据库
+        SysUser update = new SysUser();
+        update.setId(userId);
+        update.setUsername(username);
+        update.setAvatar(updateProfileDTO.getAvatar());
+        sysUserMapper.updateById(update);
+
+        //重新查一次，返回最新数据
+        SysUser updated = sysUserMapper.selectById(userId);
+        return UserVO.from(updated);
+    }
+
+    /*
+    * 更新密码
+    * */
+    @Override
+    public void updatePassword(Long userId, UpdatePasswordDTO dto) {
+        //判断用户是否存在
+        SysUser user = sysUserMapper.selectById(userId);
+        if (user == null) {
+            throw new BusinessException(ResultCode.USER_NOT_EXIST);
+        }
+        //判断新旧密码是否匹配 不匹配抛出异常
+        if (!passwordEncoder.matches(dto.getOldPassword(), user.getPassword())) {
+            throw new BusinessException(ResultCode.PASSWORD_ERROR);
+        }
+
+        //判断是否相同
+        if (passwordEncoder.matches(dto.getNewPassword(), user.getPassword())) {
+            throw new BusinessException(ResultCode.PASSWORD_SAME);
+        }
+
+        //更新数据库
+        SysUser update = new SysUser();
+        update.setId(userId);
+        //加密并且更新数据库
+        update.setPassword(passwordEncoder.encode(dto.getNewPassword()));
+        //返回
+        sysUserMapper.updateById(update);
     }
 }

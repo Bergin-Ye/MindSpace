@@ -25,7 +25,11 @@ public enum ResultCode {
 
     // ---------- 登录失败 ----------
     LOGIN_FAILED(1003, "邮箱或密码错误"),
-    USER_NOT_EXIST(1004, "用户不存在");
+    USER_NOT_EXIST(1004, "用户不存在"),
+
+    // ---------- 修改密码对应的错误码 ----------
+    PASSWORD_ERROR(1005, "原密码错误"),
+    PASSWORD_SAME(1006, "新密码不能与原密码相同");
 
 
     private final Integer code;

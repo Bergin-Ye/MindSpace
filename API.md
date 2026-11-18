@@ -73,6 +73,13 @@
 | AUTH-01 | POST | `/api/auth/register` | 用户注册 | 否 |
 | AUTH-02 | POST | `/api/auth/login` | 用户登录 | 否 |
 | AUTH-03 | GET | `/api/auth/me` | 获取当前用户信息 | 是 |
+| USER-01 | PUT | `/api/user/profile` | 修改个人资料 | 是 |
+| USER-02 | PUT | `/api/user/password` | 修改密码 | 是 |
+| KB-01 | POST | `/api/knowledge-bases` | 创建知识库 | 是 |
+| KB-02 | GET | `/api/knowledge-bases` | 查询知识库列表 | 是 |
+| KB-03 | GET | `/api/knowledge-bases/{id}` | 查询知识库详情 | 是 |
+| KB-04 | PUT | `/api/knowledge-bases/{id}` | 修改知识库 | 是 |
+| KB-05 | DELETE | `/api/knowledge-bases/{id}` | 删除知识库 | 是 |
 
 ---
 
@@ -249,7 +256,341 @@
 
 ---
 
-## 6. 错误码总表
+## 6. USER-01 修改个人资料
+
+### 6.1 基本信息
+
+| 项 | 内容 |
+|---|---|
+| 方法 | PUT |
+| 路径 | `/api/user/profile` |
+| 认证 | 必须 |
+| 请求头 | `Authorization: Bearer <token>`、`Content-Type: application/json` |
+
+### 6.2 请求参数
+
+| 字段 | 类型 | 必填 | 约束 | 说明 |
+|---|---|---|---|---|
+| username | String | 是 | 3—50 字符，全局唯一 | 新的用户名 |
+| avatar | String | 否 | 最长 500 | 头像地址；不传表示不修改，传空串表示清空 |
+
+说明：
+
+- 第一版不支持修改邮箱，邮箱是登录账号，修改需要额外的验证流程。
+- 头像先接收 URL 字符串，等文件上传功能完成后再接上传接口返回的地址。
+
+### 6.3 请求示例
+
+```json
+{
+  "username": "test_new",
+  "avatar": "https://example.com/avatar/test.png"
+}
+```
+
+### 6.4 成功响应
+
+```json
+{
+  "code": 200,
+  "message": "success",
+  "data": {
+    "id": 1,
+    "username": "test_new",
+    "email": "test@mindspace.com",
+    "avatar": "https://example.com/avatar/test.png",
+    "createTime": "2026-11-17T16:50:14"
+  }
+}
+```
+
+### 6.5 失败场景
+
+| 触发条件 | code | message |
+|---|---|---|
+| 用户名为空或长度不合法 | 400 | 具体校验提示 |
+| 用户名已被其他用户占用 | 1001 | 用户名已存在 |
+| token 中用户已被删除 | 1004 | 用户不存在 |
+| 未登录 | 401 | 未登录或登录已过期 |
+
+---
+
+## 7. USER-02 修改密码
+
+### 7.1 基本信息
+
+| 项 | 内容 |
+|---|---|
+| 方法 | PUT |
+| 路径 | `/api/user/password` |
+| 认证 | 必须 |
+| 请求头 | `Authorization: Bearer <token>`、`Content-Type: application/json` |
+
+### 7.2 请求参数
+
+| 字段 | 类型 | 必填 | 约束 | 说明 |
+|---|---|---|---|---|
+| oldPassword | String | 是 | 非空 | 当前使用的密码 |
+| newPassword | String | 是 | 6—50 字符 | 新密码，不能与原密码相同 |
+
+### 7.3 请求示例
+
+```json
+{
+  "oldPassword": "123456",
+  "newPassword": "abcdef"
+}
+```
+
+### 7.4 成功响应
+
+```json
+{
+  "code": 200,
+  "message": "success",
+  "data": null
+}
+```
+
+### 7.5 失败场景
+
+| 触发条件 | code | message |
+|---|---|---|
+| 原密码为空 | 400 | 原密码不能为空 |
+| 新密码长度不合法 | 400 | 新密码长度必须在6到50之间 |
+| 原密码错误 | 1005 | 原密码错误 |
+| 新密码与原密码相同 | 1006 | 新密码不能与原密码相同 |
+| 未登录 | 401 | 未登录或登录已过期 |
+
+说明：第一版修改密码后旧 token 不会立即失效，会继续有效到过期时间。后续需要时再引入 token 黑名单或版本号机制。
+
+---
+
+## 8. KB-01 创建知识库
+
+### 8.1 基本信息
+
+| 项 | 内容 |
+|---|---|
+| 方法 | POST |
+| 路径 | `/api/knowledge-bases` |
+| 认证 | 必须 |
+| 请求头 | `Authorization: Bearer <token>`、`Content-Type: application/json` |
+
+### 8.2 请求参数
+
+| 字段 | 类型 | 必填 | 约束 | 说明 |
+|---|---|---|---|---|
+| name | String | 是 | 1—100 字符 | 知识库名称 |
+| description | String | 否 | 最长 500 | 描述 |
+
+### 8.3 请求示例
+
+```json
+{
+  "name": "Java 学习",
+  "description": "Java 相关文档"
+}
+```
+
+### 8.4 成功响应
+
+```json
+{
+  "code": 200,
+  "message": "success",
+  "data": {
+    "id": 2,
+    "name": "Java 学习",
+    "description": "Java 相关文档",
+    "createTime": "2026-11-18T14:30:00",
+    "updateTime": "2026-11-18T14:30:00"
+  }
+}
+```
+
+### 8.5 失败场景
+
+| 触发条件 | code | message |
+|---|---|---|
+| 名称为空或超长 | 400 | 具体校验提示 |
+| 未登录 | 401 | 未登录或登录已过期 |
+
+---
+
+## 9. KB-02 查询知识库列表
+
+### 9.1 基本信息
+
+| 项 | 内容 |
+|---|---|
+| 方法 | GET |
+| 路径 | `/api/knowledge-bases` |
+| 认证 | 必须 |
+| 请求头 | `Authorization: Bearer <token>` |
+
+### 9.2 请求参数
+
+无。只返回当前登录用户自己的知识库。
+
+### 9.3 成功响应
+
+```json
+{
+  "code": 200,
+  "message": "success",
+  "data": [
+    {
+      "id": 1,
+      "name": "我的知识库",
+      "description": "注册时自动创建的默认知识库",
+      "createTime": "2026-11-17T16:50:14",
+      "updateTime": "2026-11-17T16:50:14"
+    },
+    {
+      "id": 2,
+      "name": "Java 学习",
+      "description": "Java 相关文档",
+      "createTime": "2026-11-18T14:30:00",
+      "updateTime": "2026-11-18T14:30:00"
+    }
+  ]
+}
+```
+
+说明：文件数量 `documentCount` 等文件功能完成后补充，当前版本不返回。
+
+---
+
+## 10. KB-03 查询知识库详情
+
+### 10.1 基本信息
+
+| 项 | 内容 |
+|---|---|
+| 方法 | GET |
+| 路径 | `/api/knowledge-bases/{id}` |
+| 认证 | 必须 |
+| 请求头 | `Authorization: Bearer <token>` |
+
+### 10.2 成功响应
+
+```json
+{
+  "code": 200,
+  "message": "success",
+  "data": {
+    "id": 2,
+    "name": "Java 学习",
+    "description": "Java 相关文档",
+    "createTime": "2026-11-18T14:30:00",
+    "updateTime": "2026-11-18T14:30:00"
+  }
+}
+```
+
+### 10.3 失败场景
+
+| 触发条件 | code | message |
+|---|---|---|
+| id 不存在 | 2001 | 知识库不存在 |
+| id 属于其他用户 | 2001 | 知识库不存在 |
+| 未登录 | 401 | 未登录或登录已过期 |
+
+说明：别人的知识库也返回“知识库不存在”，不暴露它是否存在。
+
+---
+
+## 11. KB-04 修改知识库
+
+### 11.1 基本信息
+
+| 项 | 内容 |
+|---|---|
+| 方法 | PUT |
+| 路径 | `/api/knowledge-bases/{id}` |
+| 认证 | 必须 |
+| 请求头 | `Authorization: Bearer <token>`、`Content-Type: application/json` |
+
+### 11.2 请求参数
+
+| 字段 | 类型 | 必填 | 约束 | 说明 |
+|---|---|---|---|---|
+| name | String | 是 | 1—100 字符 | 新名称 |
+| description | String | 否 | 最长 500 | 新描述 |
+
+### 11.3 请求示例
+
+```json
+{
+  "name": "Java 进阶",
+  "description": "Spring Boot 与 MySQL"
+}
+```
+
+### 11.4 成功响应
+
+```json
+{
+  "code": 200,
+  "message": "success",
+  "data": {
+    "id": 2,
+    "name": "Java 进阶",
+    "description": "Spring Boot 与 MySQL",
+    "createTime": "2026-11-18T14:30:00",
+    "updateTime": "2026-11-18T14:35:00"
+  }
+}
+```
+
+### 11.5 失败场景
+
+| 触发条件 | code | message |
+|---|---|---|
+| 名称为空或超长 | 400 | 具体校验提示 |
+| id 不存在或不属于当前用户 | 2001 | 知识库不存在 |
+| 未登录 | 401 | 未登录或登录已过期 |
+
+---
+
+## 12. KB-05 删除知识库
+
+### 12.1 基本信息
+
+| 项 | 内容 |
+|---|---|
+| 方法 | DELETE |
+| 路径 | `/api/knowledge-bases/{id}` |
+| 认证 | 必须 |
+| 请求头 | `Authorization: Bearer <token>` |
+
+### 12.2 成功响应
+
+```json
+{
+  "code": 200,
+  "message": "success",
+  "data": null
+}
+```
+
+### 12.3 失败场景
+
+| 触发条件 | code | message |
+|---|---|---|
+| id 不存在或不属于当前用户 | 2001 | 知识库不存在 |
+| 删除后一个知识库都不剩 | 2002 | 至少保留一个知识库 |
+| 未登录 | 401 | 未登录或登录已过期 |
+
+说明：
+
+- 采用逻辑删除，数据库记录保留，`deleted` 置 1。
+- 知识库下的文件、向量数据的级联清理在文件与 RAG 功能完成后补充。
+
+---
+
+## 13. 错误码总表
 
 | code | 含义 | 典型来源 |
 |---|---|---|
@@ -263,6 +604,10 @@
 | 1002 | 邮箱已被注册 | 注册 |
 | 1003 | 邮箱或密码错误 | 登录 |
 | 1004 | 用户不存在 | 当前用户查询、用户操作 |
+| 1005 | 原密码错误 | 修改密码 |
+| 1006 | 新密码与原密码相同 | 修改密码 |
+| 2001 | 知识库不存在 | 知识库查询、修改、删除 |
+| 2002 | 至少保留一个知识库 | 删除知识库 |
 
 错误码分段规则：
 
@@ -273,7 +618,7 @@
 
 ---
 
-## 7. 测试账号
+## 14. 测试账号
 
 由 `sql/02_data.sql` 初始化：
 
@@ -283,7 +628,7 @@
 
 ---
 
-## 8. 规划中的接口（尚未实现）
+## 15. 规划中的接口（尚未实现）
 
 | 模块 | 规划路径 |
 |---|---|
