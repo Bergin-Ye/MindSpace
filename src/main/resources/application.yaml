@@ -28,7 +28,6 @@ mybatis-plus:
       logic-delete-value: 1
       logic-not-delete-value: 0
 
-
-  jwt:
-    secret: ${JWT_SECRET:MindSpace-Dev-Secret-Key-Change-Me-2026-At-Least-32-Bytes}
-    expiration: 86400000
+jwt:
+  secret: ${JWT_SECRET:MindSpace-Dev-Secret-Key-Change-Me-2026-At-Least-32-Bytes}
+  expiration: 86400000
