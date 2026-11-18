@@ -33,8 +33,14 @@ public enum ResultCode {
 
     // ---------- 知识库 2000+ ----------
     KB_NOT_FOUND(2001, "知识库不存在"),
-    KB_LAST_CANNOT_DELETE(2002, "至少保留一个知识库");
+    KB_LAST_CANNOT_DELETE(2002, "至少保留一个知识库"),
 
+    // ---------- 文件夹 2003+ ----------
+    FOLDER_NOT_FOUND(2003, "文件夹不存在"),
+    FOLDER_DEFAULT_CANNOT_DELETE(2004, "默认文件夹不能删除"),
+    FOLDER_HAS_CHILDREN(2005, "请先删除或移动子文件夹"),
+    FOLDER_PARENT_INVALID(2006, "父文件夹不存在或不属于当前知识库"),
+    FOLDER_MOVE_INVALID(2007, "不能移动到自身或其子文件夹");
 
     private final Integer code;
     private final String message;

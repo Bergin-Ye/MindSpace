@@ -10,7 +10,8 @@ import com.mindspace.service.KnowledgeBaseService;
 import com.mindspace.vo.KnowledgeBaseVO;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
-
+import com.mindspace.service.FolderService;
+import org.springframework.transaction.annotation.Transactional;
 import java.util.List;
 import java.util.stream.Collectors;
 
@@ -20,8 +21,15 @@ public class KnowledgeBaseServiceImpl implements KnowledgeBaseService {
 
     private final KnowledgeBaseMapper knowledgeBaseMapper;
 
-    //创建知识库
+    // 知识库和默认文件夹必须一起创建/删除，所以这里依赖文件夹服务
+    private final FolderService folderService;
+
+    /**
+     * 创建知识库。
+     * 知识库和它的默认“未分类”文件夹必须同时成功，所以加事务。
+     */
     @Override
+    @Transactional(rollbackFor = Exception.class)
     public KnowledgeBaseVO create(Long userId, KnowledgeBaseDTO dto) {
         //新建一个对象用来接收值
         KnowledgeBase kb = new KnowledgeBase();
@@ -31,6 +39,10 @@ public class KnowledgeBaseServiceImpl implements KnowledgeBaseService {
         kb.setDescription(dto.getDescription());
         //把这个新建对象插入数据库
         knowledgeBaseMapper.insert(kb);
+
+        // 每个知识库都要有一个默认文件夹，AI 分类失败或删除文件夹时用它兜底
+        folderService.createDefault(userId, kb.getId());
+
         //返回文档需要的KnowledgeBaseVO 数据从数据库获取 用id去查
         return KnowledgeBaseVO.from(knowledgeBaseMapper.selectById(kb.getId()));
     }
@@ -81,8 +93,12 @@ public class KnowledgeBaseServiceImpl implements KnowledgeBaseService {
         return KnowledgeBaseVO.from(knowledgeBaseMapper.selectById(id));
     }
 
-    //删除知识库
+    /**
+     * 删除知识库（逻辑删除）。
+     * 先确认是自己的、且不是最后一个，再级联逻辑删除其下所有文件夹。
+     */
     @Override
+    @Transactional(rollbackFor = Exception.class)
     public void delete(Long userId, long id) {
         //删除的知识库必须是你自己的知识库
         getOwned(userId, id);
@@ -94,12 +110,19 @@ public class KnowledgeBaseServiceImpl implements KnowledgeBaseService {
         if (count <= 1) {
             throw new BusinessException(ResultCode.KB_LAST_CANNOT_DELETE);
         }
+
+        // 级联逻辑删除该知识库下的所有文件夹，避免留下孤儿数据
+        folderService.deleteByKnowledgeBase(userId, id);
+
         //删除数据库中的知识库
         knowledgeBaseMapper.deleteById(id);
     }
 
 
-    //注册时创建默认知识库
+    /**
+     * 注册时创建默认知识库，并在其中创建默认“未分类”文件夹。
+     * 调用方 UserServiceImpl.register 已经在事务里，这里加入同一个事务。
+     */
     @Override
     public void createDefault(Long userId) {
         KnowledgeBase kb = new KnowledgeBase();
@@ -107,6 +130,9 @@ public class KnowledgeBaseServiceImpl implements KnowledgeBaseService {
         kb.setName("我的知识库");
         kb.setDescription("注册时自动创建的默认知识库");
         knowledgeBaseMapper.insert(kb);
+
+        // 默认知识库同样需要默认文件夹
+        folderService.createDefault(userId, kb.getId());
     }
 
     /**
