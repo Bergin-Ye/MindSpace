@@ -94,6 +94,7 @@
 | DOC-06 | PUT | `/api/documents/{id}/move` | 移动文件 | 是 |
 | DOC-07 | DELETE | `/api/documents/{id}` | 删除文件 | 是 |
 | DOC-08 | GET | `/api/documents/{id}/download` | 下载原文件 | 是 |
+| DOC-09 | POST | `/api/documents/{id}/parse` | 解析文档正文 | 是 |
 
 ---
 
@@ -933,7 +934,7 @@ form-data 参数：
 
 ---
 
-## 17. 文件管理接口（DOC-03 ~ DOC-08）
+## 17. 文件管理接口（DOC-03 ~ DOC-09）
 
 ### 17.1 DOC-03 文件分页列表
 
@@ -1115,6 +1116,59 @@ Content-Disposition: attachment; filename="Spring Boot 指南.pdf"
 | 磁盘文件丢失 | 2013 | 文件不存在 |
 
 说明：下载接口直接返回文件流，不使用统一 Result 包装。
+
+### 17.7 DOC-09 解析文档正文
+
+| 项 | 内容 |
+|---|---|
+| 方法 | POST |
+| 路径 | `/api/documents/{id}/parse` |
+| 认证 | 必须 |
+| 请求体 | 无 |
+
+说明：同步调用 Apache Tika 提取 PDF / DOCX / TXT / MD 的正文，写入 `extracted_text`。状态流转：
+
+```
+UPLOADED / FAILED → PROCESSING → SUCCESS / FAILED
+```
+
+成功响应：
+
+```json
+{
+  "code": 200,
+  "message": "success",
+  "data": {
+    "id": 1,
+    "knowledgeBaseId": 1,
+    "folderId": 1,
+    "originalName": "Spring Boot 指南.pdf",
+    "fileType": "pdf",
+    "fileSize": 102400,
+    "processStatus": "SUCCESS",
+    "summary": null,
+    "keywords": null,
+    "aiCategory": null,
+    "confidence": null,
+    "errorMessage": null,
+    "extractedTextLength": 23580,
+    "textPreview": "第一章 Spring Boot 简介……",
+    "createTime": "2026-11-19T16:55:03",
+    "updateTime": "2026-11-19T17:20:11"
+  }
+}
+```
+
+失败场景：
+
+| 条件 | code | message |
+|---|---|---|
+| 文件不存在或不属于自己 | 2013 | 文件不存在 |
+| 磁盘文件丢失 | 2013 | 文件不存在 |
+| 文件类型不支持 | 2008 | 不支持的文件类型 |
+| 解析失败 / 未提取到文字 | 2014 | 文件解析失败（message 为具体原因） |
+
+说明：解析失败时会把 `processStatus` 置为 `FAILED`，原因写入 `error_message`，可以再次调用本接口重试；正文超过 500 万字符时只保留前 500 万字符。异步解析留到后续功能。
 
 ---
 

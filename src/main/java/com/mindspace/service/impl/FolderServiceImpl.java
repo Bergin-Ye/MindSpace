@@ -6,8 +6,10 @@ import com.mindspace.common.result.ResultCode;
 import com.mindspace.dto.FolderCreateDTO;
 import com.mindspace.dto.FolderMoveDTO;
 import com.mindspace.dto.FolderUpdateDTO;
+import com.mindspace.entity.Document;
 import com.mindspace.entity.Folder;
 import com.mindspace.entity.KnowledgeBase;
+import com.mindspace.mapper.DocumentMapper;
 import com.mindspace.mapper.FolderMapper;
 import com.mindspace.mapper.KnowledgeBaseMapper;
 import com.mindspace.service.FolderService;
@@ -28,6 +30,7 @@ public class FolderServiceImpl implements FolderService {
 
     private final FolderMapper folderMapper;
     private final KnowledgeBaseMapper knowledgeBaseMapper;
+    private final DocumentMapper documentMapper;
 
     //创建文件夹
     @Override
@@ -156,7 +159,23 @@ public class FolderServiceImpl implements FolderService {
             throw new BusinessException(ResultCode.FOLDER_HAS_CHILDREN);
         }
 
-        // TODO 文件功能完成后：把该文件夹下的文件移动到默认文件夹
+        // 删除文件夹前，把该文件夹里的文件移动到默认“未分类”，避免文件丢失
+        Folder defaultFolder = folderMapper.selectOne(
+                new LambdaQueryWrapper<Folder>()
+                        .eq(Folder::getUserId, userId)
+                        .eq(Folder::getKnowledgeBaseId, folder.getKnowledgeBaseId())
+                        .eq(Folder::getIsDefault, 1));
+        if (defaultFolder == null) {
+            throw new BusinessException(ResultCode.FOLDER_NOT_FOUND);
+        }
+
+        Document update = new Document();
+        update.setFolderId(defaultFolder.getId());
+        documentMapper.update(update, new LambdaQueryWrapper<Document>()
+                .eq(Document::getUserId, userId)
+                .eq(Document::getKnowledgeBaseId, folder.getKnowledgeBaseId())
+                .eq(Document::getFolderId, id));
+
         folderMapper.deleteById(id);
     }
 

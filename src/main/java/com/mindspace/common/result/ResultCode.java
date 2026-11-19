@@ -48,7 +48,10 @@ public enum ResultCode {
     FILE_EMPTY(2010, "文件内容为空"),
     FILE_ALREADY_EXISTS(2011, "文件已存在"),
     FILE_SAVE_FAILED(2012, "文件保存失败"),
-    FILE_NOT_FOUND(2013, "文件不存在");
+    FILE_NOT_FOUND(2013, "文件不存在"),
+
+    /*文档解析相关*/
+    FILE_PARSE_FAILED(2014, "文件解析失败");
 
     private final Integer code;
     private final String message;

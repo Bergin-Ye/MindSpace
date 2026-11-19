@@ -10,6 +10,7 @@ import com.mindspace.service.KnowledgeBaseService;
 import com.mindspace.vo.KnowledgeBaseVO;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
+import com.mindspace.service.DocumentService;
 import com.mindspace.service.FolderService;
 import org.springframework.transaction.annotation.Transactional;
 import java.util.List;
@@ -23,6 +24,9 @@ public class KnowledgeBaseServiceImpl implements KnowledgeBaseService {
 
     // 知识库和默认文件夹必须一起创建/删除，所以这里依赖文件夹服务
     private final FolderService folderService;
+
+    // 删除知识库时要级联删除文件记录和磁盘文件
+    private final DocumentService documentService;
 
     /**
      * 创建知识库。
@@ -110,6 +114,9 @@ public class KnowledgeBaseServiceImpl implements KnowledgeBaseService {
         if (count <= 1) {
             throw new BusinessException(ResultCode.KB_LAST_CANNOT_DELETE);
         }
+
+        // 级联删除该知识库下的文件记录和磁盘文件
+        documentService.deleteByKnowledgeBase(userId, id);
 
         // 级联逻辑删除该知识库下的所有文件夹，避免留下孤儿数据
         folderService.deleteByKnowledgeBase(userId, id);
