@@ -86,6 +86,14 @@
 | FO-04 | PUT | `/api/folders/{id}` | 重命名文件夹 | 是 |
 | FO-05 | DELETE | `/api/folders/{id}` | 删除文件夹 | 是 |
 | FO-06 | PUT | `/api/folders/{id}/move` | 移动文件夹 | 是 |
+| DOC-01 | POST | `/api/documents/upload` | 单文件上传 | 是 |
+| DOC-02 | POST | `/api/documents/batch-upload` | 批量上传 | 是 |
+| DOC-03 | GET | `/api/documents` | 文件分页列表 | 是 |
+| DOC-04 | GET | `/api/documents/{id}` | 文件详情 | 是 |
+| DOC-05 | PUT | `/api/documents/{id}` | 重命名文件 | 是 |
+| DOC-06 | PUT | `/api/documents/{id}/move` | 移动文件 | 是 |
+| DOC-07 | DELETE | `/api/documents/{id}` | 删除文件 | 是 |
+| DOC-08 | GET | `/api/documents/{id}/download` | 下载原文件 | 是 |
 
 ---
 
@@ -619,6 +627,12 @@
 | 2005 | 请先删除或移动子文件夹 | 删除文件夹 |
 | 2006 | 父文件夹不存在或不属于当前知识库 | 创建、移动文件夹 |
 | 2007 | 不能移动到自身或其子文件夹 | 移动文件夹 |
+| 2008 | 不支持的文件类型 | 文件上传 |
+| 2009 | 文件大小超过限制 | 文件上传 |
+| 2010 | 文件内容为空 | 文件上传 |
+| 2011 | 文件已存在 | 文件上传 |
+| 2012 | 文件保存失败 | 文件上传 |
+| 2013 | 文件不存在 | 文件查询、删除、下载 |
 
 错误码分段规则：
 
@@ -817,7 +831,294 @@
 
 ---
 
-## 16. 规划中的接口（尚未实现）
+## 16. 文件上传接口（DOC-01 ~ DOC-02）
+
+### 16.1 DOC-01 单文件上传
+
+| 项 | 内容 |
+|---|---|
+| 方法 | POST |
+| 路径 | `/api/documents/upload` |
+| 认证 | 必须 |
+| Content-Type | `multipart/form-data` |
+
+form-data 参数：
+
+| 字段 | 类型 | 必填 | 说明 |
+|---|---|---|---|
+| knowledgeBaseId | Long | 是 | 目标知识库，必须是自己的 |
+| folderId | Long | 否 | 目标文件夹；不传则放入该知识库的“未分类” |
+| file | File | 是 | 支持 pdf、docx、txt、md，最大 20MB |
+
+成功响应：
+
+```json
+{
+  "code": 200,
+  "message": "success",
+  "data": {
+    "id": 1,
+    "knowledgeBaseId": 1,
+    "folderId": 1,
+    "originalName": "Spring Boot 指南.pdf",
+    "fileType": "pdf",
+    "fileSize": 102400,
+    "processStatus": "UPLOADED",
+    "createTime": "2026-11-19T10:00:00"
+  }
+}
+```
+
+失败场景：
+
+| 条件 | code | message |
+|---|---|---|
+| 文件为空 | 2010 | 文件内容为空 |
+| 超过 20MB | 2009 | 文件大小超过限制 |
+| 扩展名不支持 | 2008 | 不支持的文件类型 |
+| 同一知识库下已有相同文件 | 2011 | 文件已存在 |
+| 文件保存失败 | 2012 | 文件保存失败 |
+| 知识库不存在或不属于自己 | 2001 | 知识库不存在 |
+| 文件夹不存在或不属于该知识库 | 2003 | 文件夹不存在 |
+| 未登录 | 401 | 未登录或登录已过期 |
+
+说明：上传成功后 `process_status` 为 `UPLOADED`，文本解析和 AI 分析在后续功能中处理。
+
+### 16.2 DOC-02 批量上传
+
+| 项 | 内容 |
+|---|---|
+| 方法 | POST |
+| 路径 | `/api/documents/batch-upload` |
+| 认证 | 必须 |
+| Content-Type | `multipart/form-data` |
+
+form-data 参数：
+
+| 字段 | 类型 | 必填 | 说明 |
+|---|---|---|---|
+| knowledgeBaseId | Long | 是 | 目标知识库 |
+| folderId | Long | 否 | 目标文件夹，不传用“未分类” |
+| files | File[] | 是 | 多个文件，字段名统一为 `files` |
+
+成功响应（允许部分成功）：
+
+```json
+{
+  "code": 200,
+  "message": "success",
+  "data": {
+    "total": 2,
+    "successCount": 1,
+    "failCount": 1,
+    "items": [
+      {
+        "originalName": "a.pdf",
+        "success": true,
+        "documentId": 1,
+        "code": 200,
+        "message": "success"
+      },
+      {
+        "originalName": "b.zip",
+        "success": false,
+        "documentId": null,
+        "code": 2008,
+        "message": "不支持的文件类型"
+      }
+    ]
+  }
+}
+```
+
+---
+
+## 17. 文件管理接口（DOC-03 ~ DOC-08）
+
+### 17.1 DOC-03 文件分页列表
+
+| 项 | 内容 |
+|---|---|
+| 方法 | GET |
+| 路径 | `/api/documents` |
+| 认证 | 必须 |
+
+查询参数：
+
+| 参数 | 类型 | 必填 | 默认 | 说明 |
+|---|---|---|---|---|
+| knowledgeBaseId | Long | 是 | — | 知识库 id |
+| folderId | Long | 否 | — | 按文件夹筛选 |
+| keyword | String | 否 | — | 按原始文件名模糊搜索 |
+| processStatus | String | 否 | — | UPLOADED / PROCESSING / SUCCESS / FAILED |
+| page | long | 否 | 1 | 页码，从 1 开始 |
+| size | long | 否 | 10 | 每页条数，最大 100 |
+
+请求示例：
+
+```
+GET /api/documents?knowledgeBaseId=1&folderId=1&keyword=spring&processStatus=UPLOADED&page=1&size=10
+```
+
+成功响应：
+
+```json
+{
+  "code": 200,
+  "message": "success",
+  "data": {
+    "total": 25,
+    "page": 1,
+    "size": 10,
+    "pages": 3,
+    "records": [
+      {
+        "id": 1,
+        "knowledgeBaseId": 1,
+        "folderId": 1,
+        "originalName": "Spring Boot 指南.pdf",
+        "fileType": "pdf",
+        "fileSize": 102400,
+        "processStatus": "UPLOADED",
+        "createTime": "2026-11-19T16:55:03"
+      }
+    ]
+  }
+}
+```
+
+失败场景：
+
+| 条件 | code | message |
+|---|---|---|
+| 知识库不存在或不属于自己 | 2001 | 知识库不存在 |
+| 指定的 folderId 不属于该知识库 | 2003 | 文件夹不存在 |
+| 未登录 | 401 | 未登录或登录已过期 |
+
+### 17.2 DOC-04 文件详情
+
+| 项 | 内容 |
+|---|---|
+| 方法 | GET |
+| 路径 | `/api/documents/{id}` |
+| 认证 | 必须 |
+
+成功响应：
+
+```json
+{
+  "code": 200,
+  "message": "success",
+  "data": {
+    "id": 1,
+    "knowledgeBaseId": 1,
+    "folderId": 1,
+    "originalName": "Spring Boot 指南.pdf",
+    "fileType": "pdf",
+    "fileSize": 102400,
+    "processStatus": "UPLOADED",
+    "summary": null,
+    "keywords": null,
+    "aiCategory": null,
+    "confidence": null,
+    "errorMessage": null,
+    "createTime": "2026-11-19T16:55:03",
+    "updateTime": "2026-11-19T16:55:03"
+  }
+}
+```
+
+失败：文件不存在或不属于当前用户 → 2013。
+
+### 17.3 DOC-05 重命名文件
+
+| 项 | 内容 |
+|---|---|
+| 方法 | PUT |
+| 路径 | `/api/documents/{id}` |
+| 认证 | 必须 |
+| Content-Type | `application/json` |
+
+请求示例：
+
+```json
+{
+  "originalName": "Spring Boot 实战.pdf"
+}
+```
+
+成功：data 为更新后的 DocumentVO。
+
+失败：名称为空/超长 → 400；文件不存在或不属于自己 → 2013。
+
+### 17.4 DOC-06 移动文件
+
+| 项 | 内容 |
+|---|---|
+| 方法 | PUT |
+| 路径 | `/api/documents/{id}/move` |
+| 认证 | 必须 |
+| Content-Type | `application/json` |
+
+请求示例：
+
+```json
+{
+  "folderId": 2
+}
+```
+
+成功：data 为更新后的 DocumentVO。
+
+失败：
+
+| 条件 | code |
+|---|---|
+| 文件不存在或不属于自己 | 2013 |
+| 目标文件夹不存在或不属于该知识库 | 2003 |
+
+### 17.5 DOC-07 删除文件
+
+| 项 | 内容 |
+|---|---|
+| 方法 | DELETE |
+| 路径 | `/api/documents/{id}` |
+| 认证 | 必须 |
+
+成功：`data = null`。
+
+失败：文件不存在或不属于自己 → 2013。
+
+说明：数据库做逻辑删除，同时删除磁盘上的原文件；向量数据清理在 RAG 功能完成后补充。
+
+### 17.6 DOC-08 下载原文件
+
+| 项 | 内容 |
+|---|---|
+| 方法 | GET |
+| 路径 | `/api/documents/{id}/download` |
+| 认证 | 必须 |
+
+成功响应不是 JSON，而是二进制文件流：
+
+```
+HTTP 200
+Content-Type: application/octet-stream
+Content-Disposition: attachment; filename="Spring Boot 指南.pdf"
+```
+
+失败：
+
+| 条件 | code | message |
+|---|---|---|
+| 文件不存在或不属于自己 | 2013 | 文件不存在 |
+| 磁盘文件丢失 | 2013 | 文件不存在 |
+
+说明：下载接口直接返回文件流，不使用统一 Result 包装。
+
+---
+
+## 18. 规划中的接口（尚未实现）
 
 | 模块 | 规划路径 |
 |---|---|

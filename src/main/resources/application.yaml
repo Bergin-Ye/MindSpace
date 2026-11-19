@@ -31,3 +31,6 @@ mybatis-plus:
 jwt:
   secret: ${JWT_SECRET:MindSpace-Dev-Secret-Key-Change-Me-2026-At-Least-32-Bytes}
   expiration: 86400000
+
+file:
+  upload-dir: ${FILE_UPLOAD_DIR:uploads}

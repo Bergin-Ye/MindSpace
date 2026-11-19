@@ -40,7 +40,15 @@ public enum ResultCode {
     FOLDER_DEFAULT_CANNOT_DELETE(2004, "默认文件夹不能删除"),
     FOLDER_HAS_CHILDREN(2005, "请先删除或移动子文件夹"),
     FOLDER_PARENT_INVALID(2006, "父文件夹不存在或不属于当前知识库"),
-    FOLDER_MOVE_INVALID(2007, "不能移动到自身或其子文件夹");
+    FOLDER_MOVE_INVALID(2007, "不能移动到自身或其子文件夹"),
+
+    /*文件上传相关*/
+    FILE_TYPE_NOT_SUPPORTED(2008, "不支持的文件类型"),
+    FILE_SIZE_EXCEEDED(2009, "文件大小超过限制"),
+    FILE_EMPTY(2010, "文件内容为空"),
+    FILE_ALREADY_EXISTS(2011, "文件已存在"),
+    FILE_SAVE_FAILED(2012, "文件保存失败"),
+    FILE_NOT_FOUND(2013, "文件不存在");
 
     private final Integer code;
     private final String message;
