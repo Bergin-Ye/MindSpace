@@ -39,9 +39,11 @@ public interface DocumentService {
     //下载文档
     DownloadFile download(Long userId, Long id);
 
-    //解析文档正文（同步）
-    DocumentDetailVO parseDocument(Long userId, Long id);
-
     //删除知识库时级联删除文件记录和磁盘文件
     void deleteByKnowledgeBase(Long userId, Long knowledgeBaseId);
+
+    /*
+    * 解析文档的接口
+    * */
+    DocumentDetailVO  parseDocument(Long userId, Long id);
 }

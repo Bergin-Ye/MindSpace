@@ -143,13 +143,16 @@ public class DocumentController {
                 .body(file.resource());
     }
 
+
     /*
-     * 解析文档正文（同步）
-     * */
+    * 这里是文档解析的控制层接口
+    * 我在思考 前端会给我发过来要解析的文档的id
+    * 我们需要userId来判断是否有权限解析该文档
+    * */
     @PostMapping("/{id}/parse")
-    public Result<DocumentDetailVO> parse(@AuthenticationPrincipal Long userId,
-                                          @PathVariable("id") Long id) {
-        return Result.success(documentService.parseDocument(userId, id));
+    public Result<DocumentDetailVO > parse(@AuthenticationPrincipal Long userId,
+                                   @PathVariable("id") Long id){
+        return Result.success(documentService.parseDocument(userId,id));
     }
 
 

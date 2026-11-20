@@ -24,9 +24,7 @@ public class DocumentDetailVO {
     private String aiCategory;
     private BigDecimal confidence;
     private String errorMessage;
-    //解析出的正文长度（字符数）
     private Long extractedTextLength;
-    //正文预览（前 200 个字符）
     private String textPreview;
     private LocalDateTime createTime;
     private LocalDateTime updateTime;
@@ -45,6 +43,7 @@ public class DocumentDetailVO {
         vo.setAiCategory(doc.getAiCategory());
         vo.setConfidence(doc.getConfidence());
         vo.setErrorMessage(doc.getErrorMessage());
+
         //详情接口不返回全文，避免响应过大；只给长度和预览
         String text = doc.getExtractedText();
         if (text != null) {
@@ -53,6 +52,7 @@ public class DocumentDetailVO {
                     ? text.substring(0, PREVIEW_LENGTH) + "..."
                     : text);
         }
+
         vo.setCreateTime(doc.getCreateTime());
         vo.setUpdateTime(doc.getUpdateTime());
         return vo;

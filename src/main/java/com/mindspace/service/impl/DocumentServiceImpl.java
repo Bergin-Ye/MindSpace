@@ -22,14 +22,15 @@ import com.mindspace.vo.DocumentDetailVO;
 import com.mindspace.vo.DocumentVO;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
-import org.apache.tika.Tika;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.core.io.FileSystemResource;
 import org.springframework.core.io.Resource;
 import org.springframework.stereotype.Service;
 import org.springframework.util.StringUtils;
 import org.springframework.web.multipart.MultipartFile;
-
+import org.apache.tika.Tika;
+import org.apache.tika.io.TikaInputStream;
+import org.apache.tika.metadata.Metadata;
 import java.io.IOException;
 import java.io.InputStream;
 import java.nio.file.Files;
@@ -51,16 +52,17 @@ public class DocumentServiceImpl implements DocumentService {
     private static final long MAX_FILE_SIZE = 20L * 1024 * 1024;
     //提取正文的最大字符数，超出部分截断
     private static final int MAX_EXTRACTED_TEXT_LENGTH = 5_000_000;
+
     //error_message 的最大长度，避免写库过长
     private static final int MAX_ERROR_MESSAGE_LENGTH = 500;
+
+    //Tika 门面可以复用；有初始化的 final 字段不会被 @RequiredArgsConstructor 纳入构造参数
+    private final Tika tika = new Tika();
 
     //注入Mapper接口
     private final DocumentMapper documentMapper;
     private final FolderMapper folderMapper;
     private final KnowledgeBaseMapper knowledgeBaseMapper;
-
-    //Tika 门面可以复用，不需要每次解析都重新初始化
-    private final Tika tika = new Tika();
 
 
     //指定接受的文件存储在哪个路径 通过application.yaml配置
@@ -404,91 +406,88 @@ public class DocumentServiceImpl implements DocumentService {
             return new DownloadFile(resource, doc.getOriginalName(), size);
     }
 
-
-    /*······················文档解析················*/
-
-    /**
-     * 同步解析文档正文
-     * 状态流转：UPLOADED / FAILED → PROCESSING → SUCCESS / FAILED
-     */
+    /*
+    * 这里是解析文档的service
+    * */
     @Override
-    public DocumentDetailVO parseDocument(Long userId, Long id) {
-        // 1. 文件记录必须存在且属于当前用户
+    public DocumentDetailVO  parseDocument(Long userId, Long id) {
+        //我们拿到文件id我们需要检验是你的文件 不能乱碰别人的文件
         Document doc = getOwned(userId, id);
 
-        // 2. 只解析系统允许的类型
-        if (doc.getFileType() == null || !ALLOWED_TYPES.contains(doc.getFileType())) {
+        //只检验系统允许的文件类型
+        //ALLOWED_TYPES 是上面定义允许的文件类型 加了！就是不允许的文件类型 然后如果在这个不允许的类型中就抛出异常
+        if(doc.getFileType() == null || !ALLOWED_TYPES.contains(doc.getFileType())) {
             throw new BusinessException(ResultCode.FILE_TYPE_NOT_SUPPORTED);
         }
 
-        // 3. 磁盘文件必须真实存在，否则 Tika 无从解析
+        //数据库里存储的判断了 现在要判断真正磁盘中是否存在
+        //拿到数据库里存储的文件相对路径 然后安全的转换成绝对路径 存储到path
         Path path = resolvePath(doc.getFilePath());
-        if (!Files.exists(path)) {
+        //去磁盘中绝对路径查文件是否存在
+        if(!Files.exists(path)){
             throw new BusinessException(ResultCode.FILE_NOT_FOUND);
         }
 
-        // 4. 先标记为处理中，前端轮询能看到状态变化；同时清掉上次的错误信息
-        updateParseStatus(id, "PROCESSING", null, null);
+        /*
+        * 现在我们要做一个文件状态的控制
+        * 是因为假如相同的或者同一个文件几乎同时到达服务器 需要被解析
+        * 我们不可能都去解析 Tika是一个非常吃CUP的东西
+        * 我们必须只让一个进行解析 重复操作会让服务器压力过于大了
+        * */
+
+        /*
+        * 下面的的语句就是一堆id传过来
+        * 我们假设情况一堆id 相同的过来了
+        * 第一个id查完 userid查完是你的 状态也是UPLOADED
+        * 那我就设置你新状态PROCESSING 清空错误消息
+        * 然后其他的相同的id 过来请求 由于update where现在找不到状态是上传的了 所有请求都被过滤掉了
+        * */
+        int rows = documentMapper.update(null, new LambdaUpdateWrapper<Document>()
+                .eq(Document::getId, id)
+                .eq(Document::getUserId, userId)
+                .in(Document::getProcessStatus, "UPLOADED", "FAILED")
+                .set(Document::getProcessStatus, "PROCESSING")
+                .set(Document::getErrorMessage, null));
+        //如果没有更新到数据库 就抛出异常
+        if (rows == 0) {
+            throw new BusinessException(ResultCode.FILE_PARSE_STATUS_INVALID);
+        }
 
         try {
-            // 5. 交给 Tika 自动识别格式并抽取正文
-            String text = tika.parseToString(path);
+            // 5. Tika 自动识别格式并抽取正文
+            // Tika 门面默认只保留 10 万字符，这里显式传入 500 万上限；
+            // 超过上限时 Tika 会返回已写入的前 500 万字符，不会抛异常。
+            String text;
+            try (InputStream in = TikaInputStream.get(path)) {
+                text = tika.parseToString(in, new Metadata(), MAX_EXTRACTED_TEXT_LENGTH);
+            }
+            //如果解析出来的是空字符串 就赋值为空字符串
             text = text == null ? "" : text.trim();
 
-            // 6. 扫描件、图片型 PDF 可能抽不出任何文字，按失败处理
+            // 6. 扫描件、图片型 PDF 可能抽不出文字，按失败处理
             if (text.isEmpty()) {
                 throw new BusinessException(ResultCode.FILE_PARSE_FAILED,
                         "未能提取到文本内容，可能是扫描件或图片型文件");
             }
 
-            // 7. 超出上限只截断，不让整个文档解析失败
-            if (text.length() > MAX_EXTRACTED_TEXT_LENGTH) {
-                text = text.substring(0, MAX_EXTRACTED_TEXT_LENGTH);
-            }
-
-            // 8. 正文入库并置为成功
+            // 7. 正文入库并置为成功
+            //就是用下面的方法 改数据库里面的状态 错误信息 提取正文
             updateParseStatus(id, "SUCCESS", null, text);
             return DocumentDetailVO.from(documentMapper.selectById(id));
+            //如果正常入库失败 就来抓错误信息
         } catch (BusinessException e) {
-            // 业务校验失败（如未提取到文字）也要落 FAILED
-            updateParseStatus(id, "FAILED", e.getMessage(), null);
+            // 9. 业务失败（例如空正文）也要落 FAILED
+            updateParseStatus(id, "FAILED", buildErrorMessage(e), null);
             throw e;
         } catch (Exception e) {
-            // 9. 解析异常：记录日志、写入失败原因，再抛给全局异常处理
+            // 10. 解析异常：记录日志、写入失败原因，再抛给全局异常处理
             log.error("文档解析失败：id={}, path={}", id, path, e);
             String reason = buildErrorMessage(e);
             updateParseStatus(id, "FAILED", reason, null);
             throw new BusinessException(ResultCode.FILE_PARSE_FAILED, reason);
         }
+
     }
-
-    /*······················解析相关工具方法················*/
-
-    /**
-     * 更新解析状态；extractedText 为 null 时不覆盖已有正文
-     * 用 UpdateWrapper 显式 set null，因为 updateById 默认会忽略 null 字段
-     */
-    private void updateParseStatus(Long id, String status, String errorMessage, String extractedText) {
-        documentMapper.update(null, new LambdaUpdateWrapper<Document>()
-                .eq(Document::getId, id)
-                .set(Document::getProcessStatus, status)
-                .set(Document::getErrorMessage, errorMessage)
-                .set(extractedText != null, Document::getExtractedText, extractedText));
-    }
-
-    /**
-     * 异常信息可能很长甚至为 null，截断后再写入 error_message
-     */
-    private String buildErrorMessage(Exception e) {
-        String message = e.getMessage();
-        if (!StringUtils.hasText(message)) {
-            message = e.getClass().getSimpleName();
-        }
-        return message.length() > MAX_ERROR_MESSAGE_LENGTH
-                ? message.substring(0, MAX_ERROR_MESSAGE_LENGTH)
-                : message;
-    }
-
 
     /*······················工具类························*/
 
@@ -664,6 +663,36 @@ public class DocumentServiceImpl implements DocumentService {
         //返回绝对路径
         return path;
     }
+
+    /**
+     * 更新解析状态。
+     * 用 UpdateWrapper 显式 set，因为 updateById 会忽略 null。
+     * extractedText 为 null 时不 set，避免把上一次的正文清空。
+     *
+     * 说白了就是一设置状态 一设置错误信息 一设置提取正文
+     */
+    private void updateParseStatus(Long id, String status,
+                                   String errorMessage, String extractedText) {
+        documentMapper.update(null, new LambdaUpdateWrapper<Document>()
+                .eq(Document::getId, id)
+                .set(Document::getProcessStatus, status)
+                .set(Document::getErrorMessage, errorMessage)
+                .set(extractedText != null, Document::getExtractedText, extractedText));
+    }
+
+    /**
+     * 异常信息可能为 null 或很长，截断后再写入 error_message。
+     */
+    private String buildErrorMessage(Exception e) {
+        String message = e.getMessage();
+        if (!StringUtils.hasText(message)) {
+            message = e.getClass().getSimpleName();
+        }
+        return message.length() > MAX_ERROR_MESSAGE_LENGTH
+                ? message.substring(0, MAX_ERROR_MESSAGE_LENGTH)
+                : message;
+    }
+
 
 
 }
