@@ -50,9 +50,16 @@ public enum ResultCode {
     FILE_SAVE_FAILED(2012, "文件保存失败"),
     FILE_NOT_FOUND(2013, "文件不存在"),
 
-    /* 文档解析相关 */
+    /*文档解析相关*/
     FILE_PARSE_FAILED(2014, "文件解析失败"),
-    FILE_PARSE_STATUS_INVALID(2015, "当前状态不允许解析");
+    FILE_PARSE_STATUS_INVALID(2015, "当前状态不允许解析"),
+
+    /*AI 分析相关*/
+    AI_SERVICE_ERROR(3001, "AI 服务调用失败"),
+    AI_RESPONSE_INVALID(3002, "AI 返回内容格式错误"),
+    DOCUMENT_NOT_PARSED(3003, "文档尚未解析，请先解析正文"),
+    AI_NOT_CONFIGURED(3004, "AI 服务未配置");
+
 
     private final Integer code;
     private final String message;

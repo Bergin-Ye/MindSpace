@@ -46,4 +46,5 @@ public interface DocumentService {
     * 解析文档的接口
     * */
     DocumentDetailVO  parseDocument(Long userId, Long id);
+
 }

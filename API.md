@@ -95,6 +95,7 @@
 | DOC-07 | DELETE | `/api/documents/{id}` | 删除文件 | 是 |
 | DOC-08 | GET | `/api/documents/{id}/download` | 下载原文件 | 是 |
 | DOC-09 | POST | `/api/documents/{id}/parse` | 解析文档正文 | 是 |
+| AI-01 | POST | `/api/documents/{id}/analyze` | AI 摘要、关键词、分类 | 是 |
 
 ---
 
@@ -634,6 +635,12 @@
 | 2011 | 文件已存在 | 文件上传 |
 | 2012 | 文件保存失败 | 文件上传 |
 | 2013 | 文件不存在 | 文件查询、删除、下载 |
+| 2014 | 文件解析失败 | 文档解析 |
+| 2015 | 当前状态不允许解析 | 文档解析 |
+| 3001 | AI 服务调用失败 | AI 分析 |
+| 3002 | AI 返回内容格式错误 | AI 分析 |
+| 3003 | 文档尚未解析 | AI 分析 |
+| 3004 | AI 服务未配置 | AI 分析 |
 
 错误码分段规则：
 
@@ -883,7 +890,7 @@ form-data 参数：
 | 文件夹不存在或不属于该知识库 | 2003 | 文件夹不存在 |
 | 未登录 | 401 | 未登录或登录已过期 |
 
-说明：上传成功后 `process_status` 为 `UPLOADED`，文本解析和 AI 分析在后续功能中处理。
+说明：上传成功后 `process_status` 为 `UPLOADED`，需要通过解析接口和 AI 分析接口分别处理。
 
 ### 16.2 DOC-02 批量上传
 
@@ -1166,20 +1173,85 @@ UPLOADED / FAILED → PROCESSING → SUCCESS / FAILED
 | 文件不存在或不属于自己 | 2013 | 文件不存在 |
 | 磁盘文件丢失 | 2013 | 文件不存在 |
 | 文件类型不支持 | 2008 | 不支持的文件类型 |
+| 当前状态不是 UPLOADED/FAILED（解析中或已成功） | 2015 | 当前状态不允许解析 |
 | 解析失败 / 未提取到文字 | 2014 | 文件解析失败（message 为具体原因） |
 
-说明：解析失败时会把 `processStatus` 置为 `FAILED`，原因写入 `error_message`，可以再次调用本接口重试；正文超过 500 万字符时只保留前 500 万字符。异步解析留到后续功能。
+说明：只有 `UPLOADED`、`FAILED` 可以触发解析，`PROCESSING` 和 `SUCCESS` 会返回 2015。解析失败时会把 `processStatus` 置为 `FAILED`，原因写入 `error_message`，可以再次调用本接口重试；正文超过 500 万字符时只保留前 500 万字符。异步解析留到后续功能。
 
 ---
 
-## 18. 规划中的接口（尚未实现）
+## 18. AI 分析接口（AI-01）
+
+所有 AI 分析接口都必须登录，并且只能分析自己的文档。
+
+### 18.1 AI-01 文档 AI 分析
+
+| 项 | 内容 |
+|---|---|
+| 方法 | POST |
+| 路径 | `/api/documents/{id}/analyze` |
+| 认证 | 必须 |
+| 请求体 | 无 |
+
+说明：要求文档已经解析成功（`processStatus=SUCCESS`），否则返回 3003。同步调用大模型，返回摘要、关键词、分类和置信度；重复调用会覆盖上一次结果。
+
+前置条件：
+
+- 文档存在且属于当前用户；
+- `process_status = SUCCESS`；
+- `extracted_text` 不为空。
+
+成功响应：
+
+```json
+{
+  "code": 200,
+  "message": "success",
+  "data": {
+    "id": 13,
+    "knowledgeBaseId": 1,
+    "folderId": 1,
+    "originalName": "Spring Boot 指南.pdf",
+    "fileType": "pdf",
+    "fileSize": 102400,
+    "processStatus": "SUCCESS",
+    "summary": "本文介绍了 Spring Boot 的核心概念、自动配置和常用组件。",
+    "keywords": "[\"Spring Boot\",\"自动配置\",\"Java\"]",
+    "aiCategory": "技术",
+    "confidence": 0.9500,
+    "errorMessage": null,
+    "extractedTextLength": 23580,
+    "textPreview": "第一章 Spring Boot 简介……",
+    "createTime": "2026-11-19T16:55:03",
+    "updateTime": "2026-11-20T10:05:00"
+  }
+}
+```
+
+失败场景：
+
+| 条件 | code | message |
+|---|---|---|
+| 文件不存在或不属于自己 | 2013 | 文件不存在 |
+| 文档还没解析成功 | 3003 | 文档尚未解析，请先解析正文 |
+| AI 服务未配置 | 3004 | AI 服务未配置 |
+| AI 调用失败 / 超时 | 3001 | AI 服务调用失败（message 为具体原因） |
+| AI 返回不是合法 JSON | 3002 | AI 返回内容格式错误（message 为具体原因） |
+
+说明：
+
+- `keywords` 在数据库中是 JSON 字符串，接口原样返回；前端可以 `JSON.parse`。
+- `aiCategory` 只会是：技术、学习、工作、生活、其他。
+- `confidence` 范围 0–1，保留 4 位小数。
+- 当前只把正文前 8000 个字符送给模型，用于控制 token 和费用；长文档分块摘要留到后续功能。
+- 分析失败不会修改 `process_status`，文档仍然是 `SUCCESS`，可以重新调用本接口覆盖结果。
+
+---
+
+## 19. 规划中的接口（尚未实现）
 
 | 模块 | 规划路径 |
 |---|---|
-| 知识库 | `/api/knowledge-bases` |
-| 文件夹 | `/api/folders` |
-| 文件 | `/api/documents` |
-| AI 分析 | `/api/documents/{id}/analyze` |
 | 聊天 | `/api/chat/sessions` |
 
 未实现前调用这些路径会返回 401（未登录）或 404。

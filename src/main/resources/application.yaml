@@ -16,6 +16,19 @@ spring:
   jackson:
     time-zone: Asia/Shanghai
 
+  ai:
+    openai:
+      # Spring AI 用根地址，不要带 /v1
+      base-url: ${AI_BASE_URL:https://api.deepseek.com}
+      # 没配 key 时用 dummy 占位，保证项目能启动；SpringAiClient 会检查并返回 3004
+      api-key: ${AI_API_KEY:dummy}
+      chat:
+        # 默认就是 /v1/chat/completions，这里显式写出来方便理解
+        completions-path: /v1/chat/completions
+        options:
+          model: ${AI_MODEL:deepseek-chat}
+          temperature: 0.2
+
 mybatis-plus:
   configuration:
     map-underscore-to-camel-case: true
@@ -34,3 +47,11 @@ jwt:
 
 file:
   upload-dir: ${FILE_UPLOAD_DIR:uploads}
+
+ai:
+  # 原生 RestClient 版本使用；Spring AI 版本不读这些，除了 max-input-length
+  base-url: ${AI_NATIVE_BASE_URL:https://api.deepseek.com/v1}
+  api-key: ${AI_API_KEY:}
+  model: ${AI_MODEL:deepseek-chat}
+  timeout-seconds: 60
+  max-input-length: 8000

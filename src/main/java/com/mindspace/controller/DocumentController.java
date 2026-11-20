@@ -1,5 +1,6 @@
 package com.mindspace.controller;
 
+import com.mindspace.service.DocumentAiService;
 import org.springframework.core.io.Resource;
 import com.mindspace.common.result.PageResult;
 import com.mindspace.common.result.Result;
@@ -32,6 +33,9 @@ public class DocumentController {
 
     @Autowired
     private DocumentService documentService;
+
+    @Autowired
+    private DocumentAiService documentAiService;
 
     //单个文件上传
     @PostMapping("/upload")
@@ -153,6 +157,15 @@ public class DocumentController {
     public Result<DocumentDetailVO > parse(@AuthenticationPrincipal Long userId,
                                    @PathVariable("id") Long id){
         return Result.success(documentService.parseDocument(userId,id));
+    }
+
+    /*
+    * 这里是与ai对话的接口
+    * */
+    @PostMapping("/{id}/analyze")
+    public Result<DocumentDetailVO> analyze(@AuthenticationPrincipal Long userId,
+                                            @PathVariable("id") Long id){
+        return Result.success(documentAiService.analyze(userId,id));
     }
 
 
