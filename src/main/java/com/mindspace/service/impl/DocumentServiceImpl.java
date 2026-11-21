@@ -8,6 +8,7 @@ import com.mindspace.common.result.PageResult;
 import com.mindspace.common.result.ResultCode;
 import com.mindspace.document.DownloadFile;
 import com.mindspace.dto.DocumentMoveDTO;
+import com.mindspace.dto.DocumentSearchDTO;
 import com.mindspace.dto.DocumentUpdateDTO;
 import com.mindspace.entity.Document;
 import com.mindspace.entity.Folder;
@@ -56,9 +57,21 @@ public class DocumentServiceImpl implements DocumentService {
     //error_message 的最大长度，避免写库过长
     private static final int MAX_ERROR_MESSAGE_LENGTH = 500;
 
+    //搜索关键词最大长度
+    private static final int MAX_SEARCH_KEYWORD_LENGTH = 100;
+
+    //合法解析状态
+    private static final Set<String> PROCESS_STATUSES =
+            Set.of("UPLOADED", "PROCESSING", "SUCCESS", "FAILED");
+
+    //合法 AI 分类
+    private static final Set<String> AI_CATEGORIES =
+            Set.of("技术", "学习", "工作", "生活", "其他");
+
+
+
     //Tika 门面可以复用；有初始化的 final 字段不会被 @RequiredArgsConstructor 纳入构造参数
     private final Tika tika = new Tika();
-
 
 
     //注入Mapper接口
@@ -464,6 +477,152 @@ public class DocumentServiceImpl implements DocumentService {
         //DocumentParseStatusVO 这个vo专门存储解析状态
         //然后就通过userid id验证并且返回数据库最新状态 然后封装进这个vo去返回给前端
         return DocumentParseStatusVO.from(getOwned(userId, id));
+    }
+
+    /*
+    * 高级搜索  文档
+    * */
+    @Override
+    public PageResult<DocumentSearchVO> search(Long userId, DocumentSearchDTO query) {
+        //接收传过来要高级搜索的参数 然后判断其中的知识库id是否为空
+        if(query == null || query.getKnowledgeBaseId() == null){
+            throw new BusinessException(ResultCode.PARAM_ERROR,"知识库id不能为空");
+        }
+        // 知识库必须属于当前用户
+        checkKnowledgeBase(userId, query.getKnowledgeBaseId());
+        // folderId 不为空且不为 0 时，才校验文件夹归属
+        if (query.getFolderId() != null && query.getFolderId() != 0L) {
+            checkFolder(userId, query.getKnowledgeBaseId(), query.getFolderId());
+        }
+
+        //看下关键词是否为空 不为空就去掉首位空格复制到keyword 为空就null赋值到keyword
+        String keyword = StringUtils.hasText(query.getKeyword())
+                ? query.getKeyword().trim() : null;
+        //然后keyword不为空就判断一下长度有没有超过限制
+        if (keyword != null && keyword.length() > MAX_SEARCH_KEYWORD_LENGTH) {
+            throw new BusinessException(ResultCode.PARAM_ERROR,
+                    "搜索关键词不能超过100个字符");
+        }
+        //反赋值会处理好的keyword
+        query.setKeyword(keyword);
+
+        //判断文件类型是否为空
+        if(StringUtils.hasText(query.getFileType())){
+            //转换成小写
+            String fileType = query.getFileType().trim().toLowerCase(Locale.ROOT);
+            //把文件判断是否属于合法类型
+            if(!ALLOWED_TYPES.contains(fileType)){
+                throw new BusinessException(ResultCode.FILE_TYPE_NOT_SUPPORTED);
+            }
+            //反赋值会处理好的fileType
+            query.setFileType(fileType);
+        }else{
+            query.setFileType(null);
+        }
+
+        //文件状态弄出来看下是不是空
+        if(StringUtils.hasText(query.getProcessStatus())){
+            //统一转换成大写
+            String status = query.getProcessStatus().trim().toUpperCase(Locale.ROOT);
+            //判断状态是否合法
+            if(!PROCESS_STATUSES.contains(status)){
+                //抛出异常
+                throw new BusinessException(ResultCode.PARAM_ERROR,"processStatus 只能是 UPLOADED、PROCESSING、SUCCESS、FAILED");
+            }
+            //反赋值回processStatus
+            query.setProcessStatus(status);
+            //赋值为空
+        }else{
+            query.setProcessStatus(null);
+        }
+
+        if(StringUtils.hasText(query.getAiCategory())){
+            //去掉首尾空格即可，中文分类不区分大小写
+            String category = query.getAiCategory().trim();
+            //判断状态是否合法
+            if(!AI_CATEGORIES.contains(category)){
+                throw new BusinessException(ResultCode.PARAM_ERROR,
+                        "aiCategory 只能是 技术、学习、工作、生活、其他");
+            }
+            query.setAiCategory(category);
+        }else{
+            query.setAiCategory(null);
+        }
+
+        // 7. 时间范围校验
+        if (query.getStartTime() != null && query.getEndTime() != null
+                && query.getStartTime().isAfter(query.getEndTime())) {
+            throw new BusinessException(ResultCode.PARAM_ERROR, "开始时间不能晚于结束时间");
+        }
+
+        // 8. 分页参数修正
+        //空参数或者小于1合法范围 就变成默认1 有参数合法 那就是你当前的值
+        long currentPage = (query.getPage() == null || query.getPage() < 1)
+                ? 1 : query.getPage();
+        long pageSize = (query.getSize() == null || query.getSize() < 1)
+                ? 10 : Math.min(query.getSize(), 100);
+        query.setPage(currentPage);
+        query.setSize(pageSize);
+
+        // 9. 排序方式
+        //定一个sort 用于存储
+        //如果你有指定排序方式 那就是按你的来 要么就是null
+        String sort = StringUtils.hasText(query.getSort()) ? query.getSort().trim() : null;
+        //如果说你的排序方式不是 relevance 或 createTime 就抛出异常
+        if (sort != null && !"relevance".equals(sort) && !"createTime".equals(sort)) {
+            throw new BusinessException(ResultCode.PARAM_ERROR,
+                    "sort 只能是 relevance 或 createTime");
+        }
+        //没传参数 就默认按创建时间排序
+        if (keyword == null) {
+            sort = "createTime";
+            //如果咩有指定排序方式 就默认按相关度排序
+        } else if (sort == null) {
+            sort = "relevance";
+        }
+        query.setSort(sort);
+
+        //上面都是最简单的把传过来的参数归一化 处理好 下面是去查库
+        // 先按全文索引查总数
+        boolean likeFallback = false;
+        long total = documentMapper.countSearch(userId, query, false);
+
+        // MySQL ngram 对个别英文词（例如 Java）可能不命中；
+        // 有英文字母且全文没结果时，用 LOCATE 做一次精确包含兜底
+        if (total == 0 && keyword != null && containsLatin(keyword)) {
+            likeFallback = true;
+            total = documentMapper.countSearch(userId, query, true);
+        }
+
+        //如果当前页没有数据 就返回空列表 否则 就返回当前页的数据
+        List<DocumentSearchVO> records = total == 0
+                ? List.of()
+                : documentMapper.search(userId, query,
+                (currentPage - 1) * pageSize, pageSize, likeFallback);
+        //根据总数和每页大小 计算出总页数
+        long pages = total == 0 ? 0 : (total + pageSize - 1) / pageSize;
+
+        return new PageResult<>(total, currentPage, pageSize, pages, records);
+
+
+    }
+
+
+    /**
+     * 判断字符串里有没有英文字母。
+     * 用于决定全文检索没结果时，要不要用 LOCATE 兜底。
+     */
+    private boolean containsLatin(String text) {
+        if (text == null || text.isEmpty()) {
+            return false;
+        }
+        for (int i = 0; i < text.length(); i++) {
+            char c = text.charAt(i);
+            if ((c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z')) {
+                return true;
+            }
+        }
+        return false;
     }
 
     /*······················工具类························*/

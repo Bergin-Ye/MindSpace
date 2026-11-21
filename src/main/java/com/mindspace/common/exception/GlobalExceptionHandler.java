@@ -3,6 +3,7 @@ package com.mindspace.common.exception;
 import com.mindspace.common.result.Result;
 import com.mindspace.common.result.ResultCode;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.validation.BindException;
 import org.springframework.validation.FieldError;
 import org.springframework.web.bind.MethodArgumentNotValidException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
@@ -57,5 +58,21 @@ public class GlobalExceptionHandler {
     public Result<Void> handleException(Exception e) {
         log.error("系统异常", e);
         return Result.error(ResultCode.SYSTEM_ERROR);
+    }
+
+
+    /**
+     * 查询参数绑定失败：日期格式错误、page 不是数字等
+     */
+    @ExceptionHandler(BindException.class)
+    public Result<Void> handleBindException(BindException e) {
+        String message = e.getBindingResult().getFieldErrors().stream()
+                .map(FieldError::getDefaultMessage)
+                .collect(Collectors.joining("; "));
+        if (message.isBlank()) {
+            message = "参数格式错误";
+        }
+        log.warn("参数绑定失败：{}", message);
+        return Result.error(ResultCode.PARAM_ERROR, message);
     }
 }

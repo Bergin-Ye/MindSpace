@@ -74,7 +74,8 @@ CREATE TABLE document (
     KEY idx_user_kb (user_id, knowledge_base_id),
     KEY idx_folder (folder_id),
     KEY idx_hash (user_id, knowledge_base_id, file_hash),
-    KEY idx_status (process_status)
+    KEY idx_status (process_status),
+    FULLTEXT KEY ft_document_search (original_name, extracted_text, summary) WITH PARSER ngram
 ) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4 COLLATE = utf8mb4_0900_ai_ci COMMENT = '文件表';
 
 -- 5. 聊天会话表

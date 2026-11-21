@@ -1,7 +1,8 @@
 package com.mindspace.controller;
 
+import com.mindspace.dto.DocumentSearchDTO;
 import com.mindspace.service.DocumentAiService;
-import com.mindspace.vo.DocumentParseStatusVO;
+import com.mindspace.vo.*;
 import org.springframework.core.io.Resource;
 import com.mindspace.common.result.PageResult;
 import com.mindspace.common.result.Result;
@@ -9,9 +10,6 @@ import com.mindspace.document.DownloadFile;
 import com.mindspace.dto.DocumentMoveDTO;
 import com.mindspace.dto.DocumentUpdateDTO;
 import com.mindspace.service.DocumentService;
-import com.mindspace.vo.BatchUploadResultVO;
-import com.mindspace.vo.DocumentDetailVO;
-import com.mindspace.vo.DocumentVO;
 import jakarta.validation.Valid;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.ContentDisposition;
@@ -184,6 +182,16 @@ public class DocumentController {
     public Result<DocumentParseStatusVO> parseStatus(@AuthenticationPrincipal Long userId,
                                                      @PathVariable("id") Long id){
         return Result.success(documentService.getParseStatus(userId,id));
+    }
+
+    /*、
+    * 全文检索 / 高级搜索
+    * ModelAttribute 按照DTO对应的字段名一个一个进行填进去DTO
+    * */
+    @GetMapping("/search")
+    public Result<PageResult<DocumentSearchVO>> search(@AuthenticationPrincipal Long userId,
+                                           @Valid @ModelAttribute DocumentSearchDTO query){
+        return Result.success(documentService.search(userId, query));
     }
 
 

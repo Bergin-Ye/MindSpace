@@ -97,6 +97,7 @@
 | DOC-09 | POST | `/api/documents/{id}/parse` | 解析文档正文 | 是 |
 | DOC-10 | POST | `/api/documents/{id}/parse-async` | 提交异步解析 | 是 |
 | DOC-11 | GET | `/api/documents/{id}/parse-status` | 查询解析状态 | 是 |
+| DOC-12 | GET | `/api/documents/search` | 全文检索 / 高级搜索 | 是 |
 | AI-01 | POST | `/api/documents/{id}/analyze` | AI 摘要、关键词、分类 | 是 |
 
 ---
@@ -944,7 +945,7 @@ form-data 参数：
 
 ---
 
-## 17. 文件管理接口（DOC-03 ~ DOC-11）
+## 17. 文件管理接口（DOC-03 ~ DOC-12）
 
 ### 17.1 DOC-03 文件分页列表
 
@@ -960,7 +961,7 @@ form-data 参数：
 |---|---|---|---|---|
 | knowledgeBaseId | Long | 是 | — | 知识库 id |
 | folderId | Long | 否 | — | 按文件夹筛选 |
-| keyword | String | 否 | — | 按原始文件名模糊搜索 |
+| keyword | String | 否 | — | 只按原始文件名模糊搜索；全文检索请用 DOC-12 |
 | processStatus | String | 否 | — | UPLOADED / PROCESSING / SUCCESS / FAILED |
 | page | long | 否 | 1 | 页码，从 1 开始 |
 | size | long | 否 | 10 | 每页条数，最大 100 |
@@ -1265,6 +1266,86 @@ UPLOADED / FAILED → PROCESSING → SUCCESS / FAILED
 - 应用重启时，残留的 `PROCESSING` 文档会被启动恢复任务标记为 `FAILED`，`errorMessage` 为“服务重启，解析任务中断，请重新解析”。
 - 同步解析接口 `POST /api/documents/{id}/parse` 仍然保留。
 - AI 分析接口仍然是同步的，本次没有改。
+
+### 17.10 DOC-12 全文检索 / 高级搜索
+
+| 项 | 内容 |
+|---|---|
+| 方法 | GET |
+| 路径 | `/api/documents/search` |
+| 认证 | 必须 |
+
+查询参数：
+
+| 参数 | 类型 | 必填 | 默认 | 说明 |
+|---|---|---|---|---|
+| knowledgeBaseId | Long | 是 | — | 知识库 id |
+| keyword | String | 否 | — | 全文关键词，搜索文件名、正文、AI 摘要；最长 100 字符 |
+| folderId | Long | 否 | — | 文件夹筛选，0 或不传表示全部 |
+| fileType | String | 否 | — | pdf / docx / txt / md |
+| processStatus | String | 否 | — | UPLOADED / PROCESSING / SUCCESS / FAILED |
+| aiCategory | String | 否 | — | 技术 / 学习 / 工作 / 生活 / 其他 |
+| startTime | String | 否 | — | 上传时间起，ISO 格式：2026-11-01T00:00:00 |
+| endTime | String | 否 | — | 上传时间止，ISO 格式 |
+| sort | String | 否 | relevance | relevance（相关度）/ createTime（上传时间）；无关键词时强制 createTime |
+| page | Long | 否 | 1 | 页码，从 1 开始 |
+| size | Long | 否 | 10 | 每页条数，最大 100 |
+
+请求示例：
+
+```
+GET /api/documents/search?knowledgeBaseId=1&keyword=Spring&fileType=pdf&startTime=2026-11-01T00:00:00&page=1&size=10
+```
+
+成功响应：
+
+```json
+{
+  "code": 200,
+  "message": "success",
+  "data": {
+    "total": 2,
+    "page": 1,
+    "size": 10,
+    "pages": 1,
+    "records": [
+      {
+        "id": 13,
+        "knowledgeBaseId": 1,
+        "folderId": 1,
+        "originalName": "Spring Boot 指南.pdf",
+        "fileType": "pdf",
+        "fileSize": 102400,
+        "processStatus": "SUCCESS",
+        "aiCategory": "技术",
+        "createTime": "2026-11-20T10:00:00",
+        "textSnippet": "……第一章 Spring Boot 简介，自动配置……"
+      }
+    ]
+  }
+}
+```
+
+失败场景：
+
+| 条件 | code | message |
+|---|---|---|
+| 知识库不存在或不属于自己 | 2001 | 知识库不存在 |
+| 指定的 folderId 不属于该知识库 | 2003 | 文件夹不存在 |
+| fileType 不在允许范围 | 2008 | 不支持的文件类型 |
+| processStatus / aiCategory / sort 非法 | 400 | 参数错误 |
+| 开始时间晚于结束时间 | 400 | 开始时间不能晚于结束时间 |
+| keyword 超过 100 字符 | 400 | 搜索关键词不能超过100个字符 |
+| 未登录 | 401 | 未登录或登录已过期 |
+
+说明：
+
+- 使用 MySQL FULLTEXT + ngram 解析器，索引列为 `original_name`、`extracted_text`、`summary`；`keywords` JSON 不参与全文检索。
+- 需要先执行 `sql/03_fulltext.sql` 创建全文索引；否则 `MATCH` 会报 1191。
+- `ngram_token_size` 默认是 2，单个汉字的关键词可能搜不到；需要的话调整 MySQL 配置。
+- 没有 keyword 时就是普通的高级筛选，按 `create_time` 倒序。
+- `textSnippet` 是正文中关键词附近的一段，前端可以自行做高亮。
+- 只返回当前用户、当前知识库下未删除的文档。
 
 
 
