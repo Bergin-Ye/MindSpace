@@ -6,10 +6,10 @@ import com.mindspace.dto.DocumentMoveDTO;
 import com.mindspace.dto.DocumentUpdateDTO;
 import com.mindspace.vo.BatchUploadResultVO;
 import com.mindspace.vo.DocumentDetailVO;
+import com.mindspace.vo.DocumentParseStatusVO;
 import com.mindspace.vo.DocumentVO;
 import jakarta.validation.Valid;
 import org.springframework.web.multipart.MultipartFile;
-
 import java.util.List;
 
 public interface DocumentService {
@@ -47,4 +47,13 @@ public interface DocumentService {
     * */
     DocumentDetailVO  parseDocument(Long userId, Long id);
 
+    /*
+    * 提交异步解析
+    * */
+    DocumentParseStatusVO startAsyncParse(Long userId, Long id);
+
+    /*
+    * 查询解析状态
+    * */
+    DocumentParseStatusVO getParseStatus(Long userId, Long id);
 }

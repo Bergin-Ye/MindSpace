@@ -55,3 +55,9 @@ ai:
   model: ${AI_MODEL:deepseek-chat}
   timeout-seconds: 60
   max-input-length: 8000
+
+parse:
+  pool:
+    core-size: 2
+    max-size: 4
+    queue-capacity: 50

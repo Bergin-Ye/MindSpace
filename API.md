@@ -95,6 +95,8 @@
 | DOC-07 | DELETE | `/api/documents/{id}` | 删除文件 | 是 |
 | DOC-08 | GET | `/api/documents/{id}/download` | 下载原文件 | 是 |
 | DOC-09 | POST | `/api/documents/{id}/parse` | 解析文档正文 | 是 |
+| DOC-10 | POST | `/api/documents/{id}/parse-async` | 提交异步解析 | 是 |
+| DOC-11 | GET | `/api/documents/{id}/parse-status` | 查询解析状态 | 是 |
 | AI-01 | POST | `/api/documents/{id}/analyze` | AI 摘要、关键词、分类 | 是 |
 
 ---
@@ -637,6 +639,7 @@
 | 2013 | 文件不存在 | 文件查询、删除、下载 |
 | 2014 | 文件解析失败 | 文档解析 |
 | 2015 | 当前状态不允许解析 | 文档解析 |
+| 2016 | 解析任务提交失败 | 异步解析 |
 | 3001 | AI 服务调用失败 | AI 分析 |
 | 3002 | AI 返回内容格式错误 | AI 分析 |
 | 3003 | 文档尚未解析 | AI 分析 |
@@ -941,7 +944,7 @@ form-data 参数：
 
 ---
 
-## 17. 文件管理接口（DOC-03 ~ DOC-09）
+## 17. 文件管理接口（DOC-03 ~ DOC-11）
 
 ### 17.1 DOC-03 文件分页列表
 
@@ -1176,9 +1179,94 @@ UPLOADED / FAILED → PROCESSING → SUCCESS / FAILED
 | 当前状态不是 UPLOADED/FAILED（解析中或已成功） | 2015 | 当前状态不允许解析 |
 | 解析失败 / 未提取到文字 | 2014 | 文件解析失败（message 为具体原因） |
 
-说明：只有 `UPLOADED`、`FAILED` 可以触发解析，`PROCESSING` 和 `SUCCESS` 会返回 2015。解析失败时会把 `processStatus` 置为 `FAILED`，原因写入 `error_message`，可以再次调用本接口重试；正文超过 500 万字符时只保留前 500 万字符。异步解析留到后续功能。
+说明：只有 `UPLOADED`、`FAILED` 可以触发解析，`PROCESSING` 和 `SUCCESS` 会返回 2015。解析失败时会把 `processStatus` 置为 `FAILED`，原因写入 `error_message`，可以再次调用本接口重试；正文超过 500 万字符时只保留前 500 万字符。异步解析见 DOC-10 / DOC-11。
 
 ---
+
+
+### 17.8 DOC-10 提交异步解析
+
+| 项 | 内容 |
+|---|---|
+| 方法 | POST |
+| 路径 | `/api/documents/{id}/parse-async` |
+| 认证 | 必须 |
+| 请求体 | 无 |
+
+说明：先校验文档归属、类型和磁盘文件，再把状态原子地从 `UPLOADED` / `FAILED` 改成 `PROCESSING`，然后提交线程池，立即返回当前状态。
+
+返回的 `processStatus` 通常是 `PROCESSING`；如果文档很小、解析很快，也可能直接返回 `SUCCESS`。
+
+成功响应：
+
+```json
+{
+  "code": 200,
+  "message": "success",
+  "data": {
+    "id": 13,
+    "processStatus": "PROCESSING",
+    "errorMessage": null,
+    "extractedTextLength": null,
+    "textPreview": null,
+    "updateTime": "2026-11-20T19:00:00"
+  }
+}
+```
+
+失败场景：
+
+| 条件 | code | message |
+|---|---|---|
+| 文件不存在或不属于自己 | 2013 | 文件不存在 |
+| 磁盘文件丢失 | 2013 | 文件不存在 |
+| 文件类型不支持 | 2008 | 不支持的文件类型 |
+| 当前状态是 PROCESSING / SUCCESS | 2015 | 当前状态不允许解析 |
+| 线程池队列已满 | 2016 | 解析任务提交失败 |
+
+说明：队列满时文档会被置为 `FAILED`，可以稍后重新提交。
+
+### 17.9 DOC-11 查询解析状态
+
+| 项 | 内容 |
+|---|---|
+| 方法 | GET |
+| 路径 | `/api/documents/{id}/parse-status` |
+| 认证 | 必须 |
+| 请求体 | 无 |
+
+说明：前端在提交异步解析后，每隔 1-2 秒轮询一次，直到 `processStatus` 变成 `SUCCESS` 或 `FAILED`。
+
+成功响应：
+
+```json
+{
+  "code": 200,
+  "message": "success",
+  "data": {
+    "id": 13,
+    "processStatus": "SUCCESS",
+    "errorMessage": null,
+    "extractedTextLength": 23580,
+    "textPreview": "第一章 Spring Boot 简介……",
+    "updateTime": "2026-11-20T19:00:03"
+  }
+}
+```
+
+失败场景：
+
+| 条件 | code | message |
+|---|---|---|
+| 文件不存在或不属于自己 | 2013 | 文件不存在 |
+
+说明：
+
+- 应用重启时，残留的 `PROCESSING` 文档会被启动恢复任务标记为 `FAILED`，`errorMessage` 为“服务重启，解析任务中断，请重新解析”。
+- 同步解析接口 `POST /api/documents/{id}/parse` 仍然保留。
+- AI 分析接口仍然是同步的，本次没有改。
+
+
 
 ## 18. AI 分析接口（AI-01）
 

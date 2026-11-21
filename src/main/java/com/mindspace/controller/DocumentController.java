@@ -1,6 +1,7 @@
 package com.mindspace.controller;
 
 import com.mindspace.service.DocumentAiService;
+import com.mindspace.vo.DocumentParseStatusVO;
 import org.springframework.core.io.Resource;
 import com.mindspace.common.result.PageResult;
 import com.mindspace.common.result.Result;
@@ -23,7 +24,6 @@ import org.springframework.web.multipart.MultipartFile;
 
 import java.nio.charset.StandardCharsets;
 import java.util.List;
-
 /*
 * 用于接收文档上传相关请求
 * */
@@ -168,6 +168,23 @@ public class DocumentController {
         return Result.success(documentAiService.analyze(userId,id));
     }
 
+    /*
+    * 提交异步解析
+    * */
+    @PostMapping("/{id}/parse-async")
+    public Result<DocumentParseStatusVO> parseAsync(@AuthenticationPrincipal Long userId,
+                                                    @PathVariable("id") Long id){
+        return Result.success(documentService.startAsyncParse(userId,id));
+    }
+
+    /*
+    * 查询解析状态
+    * */
+    @GetMapping("/{id}/parse-status")
+    public Result<DocumentParseStatusVO> parseStatus(@AuthenticationPrincipal Long userId,
+                                                     @PathVariable("id") Long id){
+        return Result.success(documentService.getParseStatus(userId,id));
+    }
 
 
 

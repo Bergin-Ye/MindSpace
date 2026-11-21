@@ -16,15 +16,14 @@ import com.mindspace.mapper.DocumentMapper;
 import com.mindspace.mapper.FolderMapper;
 import com.mindspace.mapper.KnowledgeBaseMapper;
 import com.mindspace.service.DocumentService;
-import com.mindspace.vo.BatchUploadItemVO;
-import com.mindspace.vo.BatchUploadResultVO;
-import com.mindspace.vo.DocumentDetailVO;
-import com.mindspace.vo.DocumentVO;
+import com.mindspace.vo.*;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.core.io.FileSystemResource;
 import org.springframework.core.io.Resource;
+import org.springframework.core.task.TaskRejectedException;
+import org.springframework.scheduling.concurrent.ThreadPoolTaskExecutor;
 import org.springframework.stereotype.Service;
 import org.springframework.util.StringUtils;
 import org.springframework.web.multipart.MultipartFile;
@@ -40,7 +39,8 @@ import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
 import java.util.*;
 import java.util.stream.Collectors;
-
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.beans.factory.annotation.Qualifier;
 @Slf4j
 @Service
 @RequiredArgsConstructor
@@ -59,6 +59,8 @@ public class DocumentServiceImpl implements DocumentService {
     //Tika 门面可以复用；有初始化的 final 字段不会被 @RequiredArgsConstructor 纳入构造参数
     private final Tika tika = new Tika();
 
+
+
     //注入Mapper接口
     private final DocumentMapper documentMapper;
     private final FolderMapper folderMapper;
@@ -68,6 +70,11 @@ public class DocumentServiceImpl implements DocumentService {
     //指定接受的文件存储在哪个路径 通过application.yaml配置
     @Value("${file.upload-dir:uploads}")
     private String uploadDir;
+
+    // 异步解析线程池；@Autowired + @Qualifier 按名字注入，避免和 Spring Boot 默认线程池冲突
+    @Autowired
+    @Qualifier("documentParseExecutor")
+    private ThreadPoolTaskExecutor parseExecutor;
 
     //单文件上传
     @Override
@@ -248,6 +255,7 @@ public class DocumentServiceImpl implements DocumentService {
 
 
 
+
     /*······················上面是上传文件操作 下面是上传完对文件的一些操作················*/
 
     //查询文件分页列表
@@ -407,86 +415,55 @@ public class DocumentServiceImpl implements DocumentService {
     }
 
     /*
-    * 这里是解析文档的service
+    * 这里是解析文档的service接口
+    * 这里属于同步解析接口
     * */
     @Override
-    public DocumentDetailVO  parseDocument(Long userId, Long id) {
-        //我们拿到文件id我们需要检验是你的文件 不能乱碰别人的文件
-        Document doc = getOwned(userId, id);
+    public DocumentDetailVO parseDocument(Long userId, Long id) {
+        //基础检验
+        Document doc = prepareParse(userId, id);
+        //原子抢状态
+        markProcessing(userId, id);
+        return doParse(doc);
+    }
 
-        //只检验系统允许的文件类型
-        //ALLOWED_TYPES 是上面定义允许的文件类型 加了！就是不允许的文件类型 然后如果在这个不允许的类型中就抛出异常
-        if(doc.getFileType() == null || !ALLOWED_TYPES.contains(doc.getFileType())) {
-            throw new BusinessException(ResultCode.FILE_TYPE_NOT_SUPPORTED);
+    /*
+    * 异步解析
+    * 步骤 校验 -> 原子抢状态 -> 提交线程池 -> 工作线程二次检查 -> 真正解析
+    * */
+    @Override
+    public DocumentParseStatusVO startAsyncParse(Long userId, Long id) {
+        //基础检验
+        prepareParse(userId, id);
+        //原子抢状态
+        markProcessing(userId, id);
+
+        try{
+            //parseExecutor这个指向线程池 然后提交一个任务 把parseProcessingDocument这个方法检查通过的文档 交给线程池去执行
+            parseExecutor.execute(() -> parseProcessingDocument(userId, id));
+        }catch (TaskRejectedException e) {
+            //如果线程池拒绝了任务 就记录日志 并且更新数据库状态为FAILED 然后抛出异常
+            log.error("异步解析任务提交失败：id={}", id, e);
+            updateParseStatus(id, "FAILED", "解析任务提交失败，请稍后重试", null);
+            throw new BusinessException(ResultCode.PARSE_TASK_SUBMIT_FAILED);
+        }catch (Exception e) {
+            //其他提交异常也要兜底，避免文档卡在 PROCESSING
+            log.error("异步解析任务提交异常：id={}", id, e);
+            updateParseStatus(id, "FAILED", "解析任务提交失败，请稍后重试", null);
+            throw new BusinessException(ResultCode.PARSE_TASK_SUBMIT_FAILED);
         }
+        //返回当前状态
+        return getParseStatus(userId, id);
+    }
 
-        //数据库里存储的判断了 现在要判断真正磁盘中是否存在
-        //拿到数据库里存储的文件相对路径 然后安全的转换成绝对路径 存储到path
-        Path path = resolvePath(doc.getFilePath());
-        //去磁盘中绝对路径查文件是否存在
-        if(!Files.exists(path)){
-            throw new BusinessException(ResultCode.FILE_NOT_FOUND);
-        }
-
-        /*
-        * 现在我们要做一个文件状态的控制
-        * 是因为假如相同的或者同一个文件几乎同时到达服务器 需要被解析
-        * 我们不可能都去解析 Tika是一个非常吃CUP的东西
-        * 我们必须只让一个进行解析 重复操作会让服务器压力过于大了
-        * */
-
-        /*
-        * 下面的的语句就是一堆id传过来
-        * 我们假设情况一堆id 相同的过来了
-        * 第一个id查完 userid查完是你的 状态也是UPLOADED
-        * 那我就设置你新状态PROCESSING 清空错误消息
-        * 然后其他的相同的id 过来请求 由于update where现在找不到状态是上传的了 所有请求都被过滤掉了
-        * */
-        int rows = documentMapper.update(null, new LambdaUpdateWrapper<Document>()
-                .eq(Document::getId, id)
-                .eq(Document::getUserId, userId)
-                .in(Document::getProcessStatus, "UPLOADED", "FAILED")
-                .set(Document::getProcessStatus, "PROCESSING")
-                .set(Document::getErrorMessage, null));
-        //如果没有更新到数据库 就抛出异常
-        if (rows == 0) {
-            throw new BusinessException(ResultCode.FILE_PARSE_STATUS_INVALID);
-        }
-
-        try {
-            // 5. Tika 自动识别格式并抽取正文
-            // Tika 门面默认只保留 10 万字符，这里显式传入 500 万上限；
-            // 超过上限时 Tika 会返回已写入的前 500 万字符，不会抛异常。
-            String text;
-            try (InputStream in = TikaInputStream.get(path)) {
-                text = tika.parseToString(in, new Metadata(), MAX_EXTRACTED_TEXT_LENGTH);
-            }
-            //如果解析出来的是空字符串 就赋值为空字符串
-            text = text == null ? "" : text.trim();
-
-            // 6. 扫描件、图片型 PDF 可能抽不出文字，按失败处理
-            if (text.isEmpty()) {
-                throw new BusinessException(ResultCode.FILE_PARSE_FAILED,
-                        "未能提取到文本内容，可能是扫描件或图片型文件");
-            }
-
-            // 7. 正文入库并置为成功
-            //就是用下面的方法 改数据库里面的状态 错误信息 提取正文
-            updateParseStatus(id, "SUCCESS", null, text);
-            return DocumentDetailVO.from(documentMapper.selectById(id));
-            //如果正常入库失败 就来抓错误信息
-        } catch (BusinessException e) {
-            // 9. 业务失败（例如空正文）也要落 FAILED
-            updateParseStatus(id, "FAILED", buildErrorMessage(e), null);
-            throw e;
-        } catch (Exception e) {
-            // 10. 解析异常：记录日志、写入失败原因，再抛给全局异常处理
-            log.error("文档解析失败：id={}, path={}", id, path, e);
-            String reason = buildErrorMessage(e);
-            updateParseStatus(id, "FAILED", reason, null);
-            throw new BusinessException(ResultCode.FILE_PARSE_FAILED, reason);
-        }
-
+    /*
+    * 去查当前状态的接口
+    * */
+    @Override
+    public DocumentParseStatusVO getParseStatus(Long userId, Long id) {
+        //DocumentParseStatusVO 这个vo专门存储解析状态
+        //然后就通过userid id验证并且返回数据库最新状态 然后封装进这个vo去返回给前端
+        return DocumentParseStatusVO.from(getOwned(userId, id));
     }
 
     /*······················工具类························*/
@@ -693,8 +670,132 @@ public class DocumentServiceImpl implements DocumentService {
                 : message;
     }
 
+    /*
+    校验 -> 原子抢状态 -> 提交线程池 -> 工作线程二次检查（我在这里） -> 真正解析
+    * 在进入线程池真正被Tika解析之前需要做的一个校验
+    * 好处是：避免对已成功/已失败/已取消/已删除/已重置的文档做无效解析，
+    * 省 CPU/IO，防止覆盖正确结果，兜住重复任务，保证解析基于最新文档。
+    * */
+    private void parseProcessingDocument(Long userId, Long id){
+        try{
+            //第一做检验文件是否属于你 第二拿的是最新数据
+            Document doc = getOwned(userId, id);
+            //看看当前文件状态是否是PROCESSING 也就是是否处于解析中状态
+            if(!"PROCESSING".equals(doc.getProcessStatus())){
+                //如果不是解析ING状态 就警告一下
+                log.warn("异步解析跳过：文档状态不是 PROCESSING，id={}, status={}",
+                        id, doc.getProcessStatus());
+                return;
+            }
+            //如果是解析状态 属于你 那就真正开始解析
+            doParse(doc);
+        }catch (BusinessException e) {
+            // doParse 内部已经写入 FAILED 和 error_message，这里只记录日志
+            log.warn("异步解析业务失败：id={}, message={}", id, e.getMessage());
+        } catch (Exception e) {
+            log.error("异步解析异常：id={}", id, e);
+            updateParseStatus(id, "FAILED", buildErrorMessage(e), null);
+        }
+    }
+
+    /*
+    校验（我在这里） -> 原子抢状态 -> 提交线程池 -> 工作线程二次检查 -> 真正解析
+    * 解析之前校验 归属 类型 磁盘文件
+    * */
+    private Document prepareParse(Long userId, Long id){
+        //校验文件是否属于你 第二拿的是最新数据
+        Document doc = getOwned(userId, id);
+
+        //从数据库拿到当前文件存储的是啥类型 看下是否符合规范
+        if(doc.getFileType() == null || !ALLOWED_TYPES.contains(doc.getFileType())) {
+            throw new BusinessException(ResultCode.FILE_TYPE_NOT_SUPPORTED);
+        }
+        //用之前写的工具类拿到文件的绝对路径
+        Path path = resolvePath(doc.getFilePath());
+        //取磁盘看绝对路径下文件是否存在
+        if(!Files.exists(path)){
+            //不存在就要抛出异常
+            throw new BusinessException(ResultCode.FILE_NOT_FOUND);
+        }
+        //属于你 类型对 磁盘有 那我让你通过了
+        return doc;
+    }
+
+    /*
+    * 抢占原子状态
+    * */
+    private void markProcessing(Long userId, Long id){
+        //定义一个row根据id userid 还有状态 是否是UPLOADED 或 FAILED 这三个条件满足就去修改状态和错误信息
+        //然后row适用于看你成功修改了几条数据
+        int rows = documentMapper.update(null, new LambdaUpdateWrapper<Document>()
+                .eq(Document::getId, id)
+                .eq(Document::getUserId, userId)
+                .in(Document::getProcessStatus, "UPLOADED", "FAILED")
+                .set(Document::getProcessStatus, "PROCESSING")
+                .set(Document::getErrorMessage, null));
+
+        //如果你没有修改任何数据那就抛出异常 说明当前文件状态不是UPLOADED 或 FAILED
+        if (rows == 0) {
+            throw new BusinessException(ResultCode.FILE_PARSE_STATUS_INVALID);
+        }
+    }
+
+    /**
+     * 真正解析，同步和异步共用。
+     * 成功返回最新详情；失败写 FAILED + error_message 并抛出异常。
+     */
+    //把要解析的文档数据传过来 然后返回的是封装好的DocumentDetailVO
+    private DocumentDetailVO doParse(Document doc) {
+        //拿到当前文档的id
+        Long id = doc.getId();
+        //定义一个path 用于存储路径
+        Path path = null;
+
+        try {
+            //去拿到文件的在磁盘的绝对路径然后存储下来
+            path = resolvePath(doc.getFilePath());
+
+            //定一个空text用于存储提取的文本内容
+            String text;
+
+            //一句话用tika专用方法把文件丢给他去解析 然后不要超过最大长度
+
+            // 5. try-with-resources：括号里的流会在 try 块结束时自动 close()
+            //    不管正常结束还是抛异常，都会关闭，防止文件句柄泄漏
+            //    TikaInputStream 是 Tika 专用的输入流，支持 mark/reset、类型探测等
+            try (InputStream in = TikaInputStream.get(path)) {
+
+                // 6. 让 Tika 从输入流里抽文本
+                //    new Metadata() 是给 Tika 填元信息用的，这里不关心
+                //    MAX_EXTRACTED_TEXT_LENGTH 限制最多抽多少字符，防止超大文件撑爆内存/数据库
+                text = tika.parseToString(in, new Metadata(), MAX_EXTRACTED_TEXT_LENGTH);
+            }
+            //去掉首位空格和换行符 如果是空的 就赋值为空字符串
+            text = text == null ? "" : text.trim();
+
+            //文本是空的抛出异常
+            if (text.isEmpty()) {
+                throw new BusinessException(ResultCode.FILE_PARSE_FAILED,
+                        "未能提取到文本内容，可能是扫描件或图片型文件");
+            }
+
+            //设置好状态 错误信息 提取的文本 丢进数据库
+            updateParseStatus(id, "SUCCESS", null, text);
+            //返回最新详情
+            return DocumentDetailVO.from(documentMapper.selectById(id));
+            //如果有抛出异常 那我就去抓这个异常 然后设置好状态 错误信息 提取的文本 丢进数据库
+        } catch (BusinessException e) {
+            updateParseStatus(id, "FAILED", buildErrorMessage(e), null);
+            throw e;
+            //如果有其他异常 那我就去抓这个异常 然后设置好状态 错误信息 提取的文本 丢进数据库
+        } catch (Exception e) {
+            log.error("文档解析失败：id={}, path={}", id, path, e);
+            String reason = buildErrorMessage(e);
+            updateParseStatus(id, "FAILED", reason, null);
+            throw new BusinessException(ResultCode.FILE_PARSE_FAILED, reason);
+        }
+    }
+
 
 
 }
-
-
