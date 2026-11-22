@@ -1,0 +1,25 @@
+spring:
+  datasource:
+    url: ${MYSQL_URL}
+    username: ${MYSQL_USERNAME}
+    password: ${MYSQL_PASSWORD}
+
+  ai:
+    openai:
+      # 生产必须显式提供，不提供就启动失败，避免误用 dummy
+      api-key: ${AI_API_KEY}
+
+jwt:
+  # 生产必须提供，至少 32 字节
+  secret: ${JWT_SECRET}
+
+file:
+  upload-dir: ${FILE_UPLOAD_DIR}
+
+embedding:
+  api-key: ${EMBEDDING_API_KEY}
+
+logging:
+  level:
+    com.mindspace: INFO
+    com.mindspace.mapper: INFO

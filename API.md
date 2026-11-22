@@ -1797,10 +1797,82 @@ GET /api/documents/vector-search?knowledgeBaseId=1&query=Spring%20Boot%20自动�
 
 
 
-## 21. 规划中的接口（尚未实现）
+## 21. 前端联调说明
 
-| 模块 | 规划路径 |
+### 21.1 基础信息
+
+| 项 | 内容 |
 |---|---|
-| 聊天 | `/api/chat/sessions` |
+| Base URL | `http://localhost:8080` |
+| 认证方式 | `Authorization: Bearer <token>` |
+| 响应结构 | `Result { code, message, data }` |
+| HTTP 状态码 | 统一 200，业务结果看 `code` |
+| 时间格式 | ISO-8601，例如 `2026-11-22T20:00:00` |
+| 分页结构 | `PageResult { total, page, size, pages, records }` |
 
-未实现前调用这些路径会返回 401（未登录）或 404。
+### 21.2 推荐调用顺序
+
+```text
+1. POST /api/auth/register 或 /api/auth/login
+2. GET  /api/auth/me
+3. POST /api/knowledge-bases
+4. GET  /api/folders/tree
+5. POST /api/documents/upload
+6. POST /api/documents/{id}/parse-async
+7. GET  /api/documents/{id}/parse-status   （轮询）
+8. POST /api/documents/{id}/analyze        （可选）
+9. POST /api/documents/{id}/embed
+10. GET /api/documents/search 或 /api/documents/vector-search
+11. POST /api/chat/ask
+12. GET /api/chat/sessions
+13. GET /api/chat/sessions/{id}/messages
+```
+
+### 21.3 异步解析
+
+前端提交：
+
+```text
+POST /api/documents/{id}/parse-async
+```
+
+然后每 1–2 秒轮询：
+
+```text
+GET /api/documents/{id}/parse-status
+```
+
+直到 `processStatus` 为 `SUCCESS` 或 `FAILED`。
+
+### 21.4 AI 接口耗时
+
+- `/api/documents/{id}/analyze` 和 `/api/chat/ask` 是同步调用大模型；
+- 通常几秒到几十秒；
+- 前端请求超时建议不低于 60 秒；
+- 不要在按钮点击后重复提交，建议加 loading 状态。
+
+### 21.5 文件上传
+
+`multipart/form-data` 字段：
+
+| 字段 | 类型 | 说明 |
+|---|---|---|
+| knowledgeBaseId | Long | 必填 |
+| folderId | Long | 可选，默认“未分类” |
+| file | File | 单文件上传 |
+| files | File[] | 批量上传时使用 |
+
+单文件最大 20MB，单请求最大 100MB。
+
+### 21.6 CORS
+
+当前后端还没有配置跨域。前端本地开发有两种方式：
+
+1. 前端开发服务器配置代理，把 `/api` 转发到 `http://localhost:8080`；
+2. 后端在 `SecurityConfig` / WebMvcConfigurer 里加 CORS 配置。
+
+正式联调前建议先确定一种方式。
+
+### 21.7 当前版本说明
+
+本文档列出的接口都已经实现；暂无前端页面和 Docker 部署。后续如果新增接口，会继续补在本文件里。

@@ -2,6 +2,9 @@ server:
   port: 8080
 
 spring:
+  profiles:
+    # 本地默认走 dev，不需要设置环境变量；生产用 --spring.profiles.active=prod 覆盖
+    default: dev
   application:
     name: mindspace
   datasource:
@@ -31,8 +34,7 @@ spring:
 
 mybatis-plus:
   configuration:
-    map-underscore-to-camel-case: true
-    log-impl: org.apache.ibatis.logging.stdout.StdOutImpl
+    log-impl: org.apache.ibatis.logging.slf4j.Slf4jImpl
   global-config:
     banner: false
     db-config:
