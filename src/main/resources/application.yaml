@@ -73,3 +73,7 @@ embedding:
   chunk-overlap: 100
   max-chunks-per-document: 200
   max-search-chunks: 5000
+
+chat:
+  top-k: 5
+  history-size: 6

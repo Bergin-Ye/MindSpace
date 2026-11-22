@@ -64,7 +64,12 @@ public enum ResultCode {
     /*向量化相关*/
     EMBEDDING_SERVICE_ERROR(3005, "向量化服务调用失败"),
     EMBEDDING_RESPONSE_INVALID(3006, "向量化返回格式错误"),
-    EMBEDDING_NOT_CONFIGURED(3007, "向量化服务未配置");
+    EMBEDDING_NOT_CONFIGURED(3007, "向量化服务未配置"),
+
+    /*RAG 问答相关*/
+    CHAT_SESSION_NOT_FOUND(3008, "会话不存在");
+
+
     private final Integer code;
     private final String message;
 

@@ -101,6 +101,7 @@
 | DOC-13 | POST | `/api/documents/{id}/embed` | 文档分块并向量化入库 | 是 |
 | DOC-14 | GET | `/api/documents/vector-search` | 向量语义检索 | 是 |
 | AI-01 | POST | `/api/documents/{id}/analyze` | AI 摘要、关键词、分类 | 是 |
+| CHAT-01 | POST | `/api/chat/ask` | RAG 智能问答 | 是 |
 
 ---
 
@@ -650,6 +651,7 @@
 | 3005 | 向量化服务调用失败 | 向量化 |
 | 3006 | 向量化返回格式错误 | 向量化 |
 | 3007 | 向量化服务未配置 | 向量化 |
+| 3008 | 会话不存在 | RAG 问答 |
 
 错误码分段规则：
 
@@ -1529,7 +1531,92 @@ GET /api/documents/vector-search?knowledgeBaseId=1&query=Spring%20Boot%20自动�
 
 ---
 
-## 19. 规划中的接口（尚未实现）
+## 19. RAG 智能问答（CHAT-01）
+
+### 19.1 基本信息
+
+| 项 | 内容 |
+|---|---|
+| 方法 | POST |
+| 路径 | `/api/chat/ask` |
+| 认证 | 必须 |
+| 请求体 | JSON |
+
+请求参数：
+
+| 参数 | 类型 | 必填 | 说明 |
+|---|---|---|---|
+| knowledgeBaseId | Long | 是 | 知识库 id |
+| sessionId | Long | 否 | 会话 id；不传则新建会话 |
+| question | String | 是 | 用户问题，最长 2000 字符 |
+
+请求示例：
+
+```json
+{
+  "knowledgeBaseId": 1,
+  "sessionId": null,
+  "question": "Spring Boot 的自动配置原理是什么？"
+}
+```
+
+流程：
+
+1. 校验知识库归属；
+2. 如果传了 sessionId，校验会话属于当前用户且属于该知识库；
+3. 用问题做向量检索，取 topK 个相关 chunk；
+4. 把 chunk 作为资料拼进 prompt，让大模型只根据资料回答；
+5. 保存 user / assistant 两条 `chat_message`；
+6. 返回回答和引用片段。
+
+成功响应：
+
+```json
+{
+  "code": 200,
+  "message": "success",
+  "data": {
+    "sessionId": 1,
+    "messageId": 2,
+    "answer": "Spring Boot 的自动配置通过 @EnableAutoConfiguration 和条件注解实现 [1]。",
+    "references": [
+      {
+        "documentId": 13,
+        "originalName": "Spring Boot 指南.pdf",
+        "chunkId": 88,
+        "chunkIndex": 2,
+        "content": "Spring Boot 的自动配置通过 @EnableAutoConfiguration ...",
+        "score": 0.8732
+      }
+    ]
+  }
+}
+```
+
+失败场景：
+
+| 条件 | code | message |
+|---|---|---|
+| 知识库不存在或不属于自己 | 2001 | 知识库不存在 |
+| 会话不存在或不属于自己 | 3008 | 会话不存在 |
+| sessionId 属于其他知识库 | 400 | 会话不属于该知识库 |
+| question 为空或超过 2000 字符 | 400 | 参数错误 |
+| AI 服务未配置 | 3004 | AI 服务未配置 |
+| AI 调用失败 / 超时 | 3001 | AI 服务调用失败 |
+| 向量化服务未配置 | 3007 | 向量化服务未配置 |
+| 向量化服务调用失败 | 3005 | 向量化服务调用失败 |
+| 向量化返回格式错误 | 3006 | 向量化返回格式错误 |
+
+说明：
+
+- 如果知识库还没有任何 chunk，接口会返回固定回答“知识库中还没有可用资料，请先上传文档并完成解析和向量化。”，不会调用大模型，`references` 为空数组。
+- 多轮对话时把上一轮返回的 `sessionId` 传回来即可，后端会带最近 6 条消息作为上下文。
+- 当前 topK 默认 5，可通过 `chat.top-k` 调整。
+- 回答中的 `[1]` 对应 `references` 数组的第 1 项。
+
+
+
+## 20. 规划中的接口（尚未实现）
 
 | 模块 | 规划路径 |
 |---|---|
