@@ -102,6 +102,10 @@
 | DOC-14 | GET | `/api/documents/vector-search` | 向量语义检索 | 是 |
 | AI-01 | POST | `/api/documents/{id}/analyze` | AI 摘要、关键词、分类 | 是 |
 | CHAT-01 | POST | `/api/chat/ask` | RAG 智能问答 | 是 |
+| CHAT-02 | GET | `/api/chat/sessions` | 会话列表 | 是 |
+| CHAT-03 | GET | `/api/chat/sessions/{id}/messages` | 会话消息列表 | 是 |
+| CHAT-04 | PUT | `/api/chat/sessions/{id}` | 重命名会话 | 是 |
+| CHAT-05 | DELETE | `/api/chat/sessions/{id}` | 删除会话 | 是 |
 
 ---
 
@@ -1616,7 +1620,184 @@ GET /api/documents/vector-search?knowledgeBaseId=1&query=Spring%20Boot%20自动�
 
 
 
-## 20. 规划中的接口（尚未实现）
+## 20. 会话历史管理（CHAT-02 ~ CHAT-05）
+
+### 20.1 CHAT-02 会话列表
+
+| 项 | 内容 |
+|---|---|
+| 方法 | GET |
+| 路径 | `/api/chat/sessions` |
+| 认证 | 必须 |
+
+查询参数：
+
+| 参数 | 类型 | 必填 | 默认 | 说明 |
+|---|---|---|---|---|
+| knowledgeBaseId | Long | 否 | — | 只看某个知识库的会话 |
+| page | long | 否 | 1 | 页码 |
+| size | long | 否 | 10 | 每页数量，最大 100 |
+
+说明：只返回当前用户的会话，按 `update_time` 倒序。
+
+成功响应：
+
+```json
+{
+  "code": 200,
+  "data": {
+    "total": 2,
+    "page": 1,
+    "size": 10,
+    "pages": 1,
+    "records": [
+      {
+        "id": 1,
+        "knowledgeBaseId": 1,
+        "title": "Spring Boot 自动配置是什么？",
+        "createTime": "2026-11-22T20:00:00",
+        "updateTime": "2026-11-22T20:05:00"
+      }
+    ]
+  }
+}
+```
+
+失败场景：
+
+| 条件 | code | message |
+|---|---|---|
+| 知识库不存在或不属于自己 | 2001 | 知识库不存在 |
+| 不带 token | 401 | 未登录或登录已过期 |
+
+### 20.2 CHAT-03 会话消息列表
+
+| 项 | 内容 |
+|---|---|
+| 方法 | GET |
+| 路径 | `/api/chat/sessions/{id}/messages` |
+| 认证 | 必须 |
+
+查询参数：`page` 默认 1，`size` 默认 20，最大 100。
+
+说明：按 `create_time` 正序返回，`references` 是 assistant 消息保存的引用片段。
+
+成功响应：
+
+```json
+{
+  "code": 200,
+  "data": {
+    "total": 4,
+    "page": 1,
+    "size": 20,
+    "pages": 1,
+    "records": [
+      {
+        "id": 1,
+        "sessionId": 1,
+        "role": "USER",
+        "content": "Spring Boot 自动配置是什么？",
+        "references": [],
+        "createTime": "2026-11-22T20:00:00"
+      },
+      {
+        "id": 2,
+        "sessionId": 1,
+        "role": "ASSISTANT",
+        "content": "Spring Boot 的自动配置通过 ...... [1]",
+        "references": [
+          {
+            "documentId": 13,
+            "originalName": "rag.txt",
+            "chunkId": 1,
+            "chunkIndex": 0,
+            "content": "Spring Boot auto configuration ...",
+            "score": 0.6858
+          }
+        ],
+        "createTime": "2026-11-22T20:00:03"
+      }
+    ]
+  }
+}
+```
+
+失败场景：
+
+| 条件 | code | message |
+|---|---|---|
+| 会话不存在或不属于自己 | 3008 | 会话不存在 |
+
+### 20.3 CHAT-04 重命名会话
+
+| 项 | 内容 |
+|---|---|
+| 方法 | PUT |
+| 路径 | `/api/chat/sessions/{id}` |
+| 认证 | 必须 |
+| 请求体 | JSON |
+
+请求示例：
+
+```json
+{
+  "title": "Spring Boot 自动配置学习"
+}
+```
+
+成功响应：
+
+```json
+{
+  "code": 200,
+  "data": {
+    "id": 1,
+    "knowledgeBaseId": 1,
+    "title": "Spring Boot 自动配置学习",
+    "createTime": "2026-11-22T20:00:00",
+    "updateTime": "2026-11-22T20:10:00"
+  }
+}
+```
+
+失败场景：
+
+| 条件 | code | message |
+|---|---|---|
+| 会话不存在或不属于自己 | 3008 | 会话不存在 |
+| title 为空或超过 255 字符 | 400 | 参数错误 |
+
+### 20.4 CHAT-05 删除会话
+
+| 项 | 内容 |
+|---|---|
+| 方法 | DELETE |
+| 路径 | `/api/chat/sessions/{id}` |
+| 认证 | 必须 |
+| 请求体 | 无 |
+
+说明：删除会话时，消息会被物理删除，会话本身逻辑删除。删除后会话列表和消息列表都不再返回它。
+
+成功响应：
+
+```json
+{
+  "code": 200,
+  "message": "success",
+  "data": null
+}
+```
+
+失败场景：
+
+| 条件 | code | message |
+|---|---|---|
+| 会话不存在或不属于自己 | 3008 | 会话不存在 |
+
+
+
+## 21. 规划中的接口（尚未实现）
 
 | 模块 | 规划路径 |
 |---|---|
