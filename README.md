@@ -1,8 +1,8 @@
 # MindSpace 个人知识库
 
-MindSpace 是一个面向个人学习的知识库后端项目，使用 Spring Boot 构建。它把文件管理、文档解析、AI 理解、全文检索、语义检索、RAG 问答和会话历史串成了一条完整链路。
+MindSpace 是一个面向个人学习的知识库项目，后端使用 Spring Boot，前端使用 Vue 3。它把文件管理、文档解析、AI 理解、全文检索、语义检索、RAG 问答和会话历史串成了一条完整链路。
 
-当前版本只提供后端 API，前端尚未实现。接口契约见 [API.md](API.md)，前端开发说明见 [FRONTEND_GUIDE.md](FRONTEND_GUIDE.md)。
+前后端在同一个仓库：`src/` 是后端，`frontend/` 是前端。接口契约见 [API.md](API.md)，前端开发说明见 [FRONTEND_GUIDE.md](FRONTEND_GUIDE.md)。
 
 ## 一、项目功能
 
@@ -53,6 +53,7 @@ MindSpace 是一个面向个人学习的知识库后端项目，使用 Spring Bo
 | 向量模型 | Ollama + bge-m3 |
 | 全文检索 | MySQL FULLTEXT + ngram |
 | 构建 | Maven |
+| 前端 | Vue 3 + Vite + Vue Router + Pinia（JavaScript） |
 
 ## 四、项目结构
 
@@ -75,6 +76,17 @@ sql/
 ├── 02_data.sql         # 基础数据
 ├── 03_fulltext.sql     # 已有库补全文索引
 └── 04_vector.sql       # 已有库补向量表
+
+frontend/
+├── src/
+│   ├── api             # 接口封装
+│   ├── components      # 通用组件（图标全部为内联 SVG）
+│   ├── layouts         # 应用壳层与登录壳层
+│   ├── router          # 路由与登录守卫
+│   ├── stores          # Pinia 状态
+│   ├── styles          # 设计令牌与全局样式
+│   └── views           # 页面
+└── vite.config.js      # /api 代理到 8080
 
 API.md                  # 接口文档
 FRONTEND_GUIDE.md       # 前端开发说明
@@ -171,6 +183,26 @@ AI 分析、RAG 问答需要真实大模型 key。没有 key 时：
 密码：123456
 ```
 
+### 7. 前端
+
+前端在 `frontend/`，使用 Vue 3 + JavaScript、Vue Router、Pinia、axios，不依赖 UI 组件库和图标库，图标全部是内联 SVG。
+
+```powershell
+cd E:\code_for_java\MindSpace\frontend
+npm install
+npm run dev
+```
+
+打开 `http://localhost:5173`。开发服务器把 `/api` 代理到 `http://localhost:8080`，后端不需要额外配置 CORS。
+
+生产构建：
+
+```powershell
+npm run build
+```
+
+产物在 `frontend/dist/`，可交给 Nginx 等静态服务器托管，并把 `/api` 反向代理到后端。
+
 ## 七、配置与日志
 
 - `application.yaml`：公共配置；
@@ -192,7 +224,7 @@ java -jar target\MindSpace-0.0.1-SNAPSHOT.jar --spring.profiles.active=prod
 
 ## 九、当前限制
 
-- 前端未实现；
+- 前端已完成，代码在 `frontend/`；
 - Docker 未做；
 - 未做 OCR，扫描版 PDF 可能解析失败；
 - AI 分析和 RAG 问答是同步接口，没有流式输出；

@@ -39,3 +39,7 @@ logs/
 .env
 application-local.yml
 application-local.yaml
+
+### Frontend ###
+frontend/node_modules/
+frontend/dist/

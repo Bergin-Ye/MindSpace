@@ -1,0 +1,72 @@
+/* MindSpace 设计令牌
+   方向：苹果式极简 + 岛屿分离 + 毛玻璃。浅暖灰底、橙色主色、
+   系统字体、超大圆角与柔和的内高光。 */
+:root {
+  color-scheme: light;
+
+  --font-sans: -apple-system, BlinkMacSystemFont, 'SF Pro Text', 'SF Pro Display',
+    'Segoe UI Variable Text', 'Segoe UI', 'PingFang SC', 'Hiragino Sans GB',
+    'Microsoft YaHei', sans-serif;
+  --font-mono: 'SF Mono', ui-monospace, 'Cascadia Mono', Menlo, Consolas, monospace;
+
+  --bg: #f2f1ee;
+  --bg-2: #f8f7f4;
+
+  /* 玻璃表面 */
+  --glass: rgba(255, 255, 255, 0.56);
+  --glass-strong: rgba(255, 255, 255, 0.76);
+  --glass-input: rgba(255, 255, 255, 0.7);
+  --glass-border: rgba(255, 255, 255, 0.72);
+  --glass-line: rgba(60, 60, 67, 0.09);
+  --glass-blur: saturate(180%) blur(26px);
+
+  --surface: #ffffff;
+  --surface-2: rgba(120, 120, 128, 0.06);
+  --surface-3: rgba(120, 120, 128, 0.12);
+
+  --ink: #1d1d1f;
+  --ink-2: #4b4b50;
+  --muted: #86868b;
+  --line: rgba(60, 60, 67, 0.09);
+  --line-strong: rgba(60, 60, 67, 0.17);
+
+  /* 主题橙 */
+  --accent: #d95a0c;
+  --accent-hover: #bd4a06;
+  --accent-strong: #a9410a;
+  --accent-soft: rgba(242, 112, 27, 0.1);
+  --accent-line: rgba(217, 90, 12, 0.24);
+  --accent-glow: rgba(242, 112, 27, 0.32);
+
+  --mark: rgba(255, 191, 105, 0.5);
+
+  --ok: #1f7a4c;
+  --ok-soft: rgba(31, 122, 76, 0.1);
+  --ok-line: rgba(31, 122, 76, 0.22);
+  --danger: #c0392b;
+  --danger-soft: rgba(192, 57, 43, 0.08);
+  --danger-line: rgba(192, 57, 43, 0.22);
+  --warn: #986200;
+  --warn-soft: rgba(214, 150, 0, 0.13);
+  --warn-line: rgba(214, 150, 0, 0.26);
+  --info: #2f6fa6;
+  --info-soft: rgba(47, 111, 166, 0.09);
+  --info-line: rgba(47, 111, 166, 0.2);
+
+  --radius-xs: 6px;
+  --radius-sm: 10px;
+  --radius-md: 16px;
+  --radius-lg: 24px;
+  --radius-xl: 30px;
+  --radius-pill: 999px;
+
+  --shadow-1: 0 1px 2px rgba(24, 24, 28, 0.04), 0 10px 26px -20px rgba(24, 24, 28, 0.22);
+  --shadow-2: 0 30px 80px -32px rgba(24, 24, 28, 0.4), 0 8px 26px rgba(24, 24, 28, 0.08);
+  --shadow-island: inset 0 1px 0 rgba(255, 255, 255, 0.9),
+    0 1px 2px rgba(24, 24, 28, 0.03), 0 16px 40px -24px rgba(24, 24, 28, 0.28);
+
+  --rail-w: 236px;
+  --content-w: 1120px;
+  --gap: 14px;
+  --ease: cubic-bezier(0.22, 0.61, 0.36, 1);
+}

@@ -161,12 +161,9 @@ FAILED → 解析失败（展示原因，可重试）
 
 ## 十一、CORS
 
-当前后端还没有配置 CORS。前端本地开发建议：
+后端没有配置 CORS。`frontend/` 已经用 Vite 的 devServer 代理把 `/api` 转发到 `http://localhost:8080`，本地开发不需要额外配置。
 
-1. 用 Vite/Webpack 的 devServer 代理，把 `/api` 转发到 `http://localhost:8080`；
-2. 或者让后端在 `SecurityConfig` / `WebMvcConfigurer` 中加 CORS。
-
-正式联调前先确定一种方式。
+如果要部署到独立域名，再让后端在 `SecurityConfig` / `WebMvcConfigurer` 中加 CORS，或者在网关层处理。
 
 ## 十二、本地后端
 
@@ -191,7 +188,7 @@ AI 分析、RAG 问答需要真实 AI key；没有 key 时只影响这两个功�
 
 ## 十三、当前限制
 
-- 前端未实现；
+- 前端已经实现，代码在 `frontend/`，覆盖接口文档里的全部页面；
 - 未做 OCR，扫描版 PDF 可能解析失败；
 - AI 分析和 RAG 问答是同步接口，没有流式输出；
 - 异步解析使用单机内存线程池，应用重启会把处理中的文档标记为失败；
@@ -203,3 +200,53 @@ AI 分析、RAG 问答需要真实 AI key；没有 key 时只影响这两个功�
 具体路径、请求参数、响应字段和错误码见 [API.md](API.md)。
 
 项目整体说明见 [README.md](README.md)。
+
+## 十五、前端工程
+
+前端已经实现并与后端放在同一个仓库，代码在 `frontend/`。
+
+技术栈：
+
+- Vue 3 + JavaScript（不是 TypeScript）
+- Vite 8
+- Vue Router（history 模式）
+- Pinia
+- axios
+
+视觉与实现约定：
+
+- 苹果极简 + 岛屿式卡片布局 + 毛玻璃（`backdrop-filter`），主色为橙色；
+- 使用系统字体栈（SF Pro / Segoe UI / PingFang SC），不加载外部字体；
+- 不引入 UI 组件库和图标库，所有图标都是内联 SVG；
+- 顶栏、侧栏、页面标题、内容面板都是独立圆角岛屿，间距和圆角统一由 `styles/tokens.css` 控制；
+- 响应式覆盖桌面、平板、390px 手机，移动端侧栏改为抽屉。
+
+本地启动：
+
+```powershell
+cd E:\code_for_java\MindSpace\frontend
+npm install
+npm run dev
+```
+
+打开 `http://localhost:5173`。`vite.config.js` 已把 `/api` 代理到 `http://localhost:8080`，后端不需要配置 CORS。
+
+构建：
+
+```powershell
+npm run build
+```
+
+产物在 `frontend/dist/`。部署时把静态文件交给 Nginx，并把 `/api` 反向代理到后端。
+
+前端已覆盖的页面：
+
+| 路由 | 页面 |
+|---|---|
+| `/login`、`/register` | 登录、注册 |
+| `/knowledge-bases` | 知识库列表、新建、重命名、删除 |
+| `/knowledge-bases/:id/files` | 文件夹树、上传、解析、移动、重命名、下载、删除 |
+| `/documents/:id` | 解析进度轮询、AI 分析、向量化、正文预览 |
+| `/search` | 关键词检索与语义检索、筛选、分页 |
+| `/chat` | RAG 问答、引用片段、会话历史 |
+| `/settings` | 修改资料、修改密码 |
