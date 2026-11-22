@@ -2,6 +2,7 @@ package com.mindspace.controller;
 
 import com.mindspace.dto.DocumentSearchDTO;
 import com.mindspace.service.DocumentAiService;
+import com.mindspace.service.DocumentEmbeddingService;
 import com.mindspace.vo.*;
 import org.springframework.core.io.Resource;
 import com.mindspace.common.result.PageResult;
@@ -35,6 +36,9 @@ public class DocumentController {
     @Autowired
     private DocumentAiService documentAiService;
 
+    @Autowired
+    private DocumentEmbeddingService documentEmbeddingService;
+
     //单个文件上传
     @PostMapping("/upload")
     public Result<DocumentVO> upload(@AuthenticationPrincipal Long userId,
@@ -45,15 +49,15 @@ public class DocumentController {
     }
 
     /*
-    * 批量上传
-    * 允许部分成功 每个文件返回自己的code 和 msg
-    * */
+     * 批量上传
+     * 允许部分成功 每个文件返回自己的code 和 msg
+     * */
 
     @PostMapping("/batch-upload")
     public Result<BatchUploadResultVO> batchUpload(@AuthenticationPrincipal Long userId,
                                                    @RequestParam("knowledgeBaseId") Long knowledgeBaseId,
                                                    @RequestParam(value = "folderId", required = false) Long folderId,
-                                                   @RequestPart("files") List<MultipartFile> files){
+                                                   @RequestPart("files") List<MultipartFile> files) {
         return Result.success(documentService.uploadBatch(userId, knowledgeBaseId, folderId, files));
     }
 
@@ -64,16 +68,15 @@ public class DocumentController {
      * */
     @GetMapping
     public Result<PageResult<DocumentVO>> list(@AuthenticationPrincipal Long userId,
-                                                     @RequestParam("knowledgeBaseId") Long knowledgeBaseId,
-                                                     @RequestParam(value = "folderId", required = false) Long folderId,
-                                                     @RequestParam(value = "keyword", required = false) String keyword,
-                                                     @RequestParam(value = "processStatus", required = false) String processStatus,
-                                                     @RequestParam(value = "page", defaultValue = "1") long page,
-                                                     @RequestParam(value = "size", defaultValue = "10") long size){
+                                               @RequestParam("knowledgeBaseId") Long knowledgeBaseId,
+                                               @RequestParam(value = "folderId", required = false) Long folderId,
+                                               @RequestParam(value = "keyword", required = false) String keyword,
+                                               @RequestParam(value = "processStatus", required = false) String processStatus,
+                                               @RequestParam(value = "page", defaultValue = "1") long page,
+                                               @RequestParam(value = "size", defaultValue = "10") long size) {
         return Result.success(documentService.list(userId, knowledgeBaseId, folderId, keyword, processStatus, page, size));
 
     }
-
 
 
     /*
@@ -81,16 +84,17 @@ public class DocumentController {
      * */
     @GetMapping("/{id}")
     public Result<DocumentDetailVO> detail(@AuthenticationPrincipal Long userId,
-                                           @PathVariable("id") Long id){
+                                           @PathVariable("id") Long id) {
         return Result.success(documentService.detail(userId, id));
     }
+
     /*
      * 重命名文件
      * */
     @PutMapping("/{id}")
     public Result<DocumentVO> rename(@AuthenticationPrincipal Long userId,
                                      @PathVariable("id") Long id,
-                                     @Valid @RequestBody DocumentUpdateDTO dto){
+                                     @Valid @RequestBody DocumentUpdateDTO dto) {
         return Result.success(documentService.rename(userId, id, dto));
     }
 
@@ -100,7 +104,7 @@ public class DocumentController {
     @PutMapping("/{id}/move")
     public Result<DocumentVO> move(@AuthenticationPrincipal Long userId,
                                    @PathVariable("id") Long id,
-                                   @Valid @RequestBody DocumentMoveDTO dto){
+                                   @Valid @RequestBody DocumentMoveDTO dto) {
         return Result.success(documentService.move(userId, id, dto));
     }
 
@@ -109,7 +113,7 @@ public class DocumentController {
      * */
     @DeleteMapping("/{id}")
     public Result<Void> delete(@AuthenticationPrincipal Long userId,
-                               @PathVariable("id") Long id){
+                               @PathVariable("id") Long id) {
         documentService.delete(userId, id);
         return Result.success();
     }
@@ -119,9 +123,9 @@ public class DocumentController {
      * */
 
     /*传的resource是文件流
-    * Result = 给 JS 讲业务故事（code/message）；
-    * ResponseEntity = 给浏览器下指令（要不要下载、文件名是什么、字节在哪）。
-    * */
+     * Result = 给 JS 讲业务故事（code/message）；
+     * ResponseEntity = 给浏览器下指令（要不要下载、文件名是什么、字节在哪）。
+     * */
     @GetMapping("/{id}/download")
     public ResponseEntity<Resource> download(@AuthenticationPrincipal Long userId,
                                              @PathVariable("id") Long id) {
@@ -147,54 +151,75 @@ public class DocumentController {
 
 
     /*
-    * 这里是文档解析的控制层接口
-    * 我在思考 前端会给我发过来要解析的文档的id
-    * 我们需要userId来判断是否有权限解析该文档
-    * */
+     * 这里是文档解析的控制层接口
+     * 我在思考 前端会给我发过来要解析的文档的id
+     * 我们需要userId来判断是否有权限解析该文档
+     * */
     @PostMapping("/{id}/parse")
-    public Result<DocumentDetailVO > parse(@AuthenticationPrincipal Long userId,
-                                   @PathVariable("id") Long id){
-        return Result.success(documentService.parseDocument(userId,id));
+    public Result<DocumentDetailVO> parse(@AuthenticationPrincipal Long userId,
+                                          @PathVariable("id") Long id) {
+        return Result.success(documentService.parseDocument(userId, id));
     }
 
     /*
-    * 这里是与ai对话的接口
-    * */
+     * 这里是与ai对话的接口
+     * */
     @PostMapping("/{id}/analyze")
     public Result<DocumentDetailVO> analyze(@AuthenticationPrincipal Long userId,
-                                            @PathVariable("id") Long id){
-        return Result.success(documentAiService.analyze(userId,id));
+                                            @PathVariable("id") Long id) {
+        return Result.success(documentAiService.analyze(userId, id));
     }
 
     /*
-    * 提交异步解析
-    * */
+     * 提交异步解析
+     * */
     @PostMapping("/{id}/parse-async")
     public Result<DocumentParseStatusVO> parseAsync(@AuthenticationPrincipal Long userId,
-                                                    @PathVariable("id") Long id){
-        return Result.success(documentService.startAsyncParse(userId,id));
+                                                    @PathVariable("id") Long id) {
+        return Result.success(documentService.startAsyncParse(userId, id));
     }
 
     /*
-    * 查询解析状态
-    * */
+     * 查询解析状态
+     * */
     @GetMapping("/{id}/parse-status")
     public Result<DocumentParseStatusVO> parseStatus(@AuthenticationPrincipal Long userId,
-                                                     @PathVariable("id") Long id){
-        return Result.success(documentService.getParseStatus(userId,id));
+                                                     @PathVariable("id") Long id) {
+        return Result.success(documentService.getParseStatus(userId, id));
     }
 
     /*、
-    * 全文检索 / 高级搜索
-    * ModelAttribute 按照DTO对应的字段名一个一个进行填进去DTO
-    * */
+     * 全文检索 / 高级搜索
+     * ModelAttribute 按照DTO对应的字段名一个一个进行填进去DTO
+     * */
     @GetMapping("/search")
     public Result<PageResult<DocumentSearchVO>> search(@AuthenticationPrincipal Long userId,
-                                           @Valid @ModelAttribute DocumentSearchDTO query){
+                                                       @Valid @ModelAttribute DocumentSearchDTO query) {
         return Result.success(documentService.search(userId, query));
     }
 
-
-
+    /*
+     * 文本分块+向量化接口
+     * */
+    @PostMapping("/{id}/embed")
+    public Result<EmbedResultVO> embed(@AuthenticationPrincipal Long userId,
+                                       @PathVariable("id") Long id) {
+        return Result.success(documentEmbeddingService.embed(userId, id));
     }
 
+    /*
+    * 向量语义检索
+    * query 自然语言问题
+    * topK 需要返回 topK 个最相关的文档
+    * */
+    @GetMapping("/vector-search")
+    public Result<List<VectorSearchResultVO>> vectorSearch(@AuthenticationPrincipal Long userId,
+                                                     @RequestParam("knowledgeBaseId") Long knowledgeBaseId,
+                                                     @RequestParam("query") String query,
+                                                     @RequestParam(value = "topK", defaultValue = "5") int topK){
+        return Result.success(documentEmbeddingService.vectorSearch(userId, knowledgeBaseId, query, topK));
+    }
+
+
+
+}

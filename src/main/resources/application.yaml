@@ -61,3 +61,15 @@ parse:
     core-size: 2
     max-size: 4
     queue-capacity: 50
+
+embedding:
+  # 默认本地 Ollama 的 OpenAI 兼容接口
+  base-url: ${EMBEDDING_BASE_URL:http://localhost:11434/v1}
+  api-key: ${EMBEDDING_API_KEY:ollama}
+  model: ${EMBEDDING_MODEL:bge-m3}
+  timeout-seconds: 60
+  batch-size: 16
+  chunk-size: 500
+  chunk-overlap: 100
+  max-chunks-per-document: 200
+  max-search-chunks: 5000

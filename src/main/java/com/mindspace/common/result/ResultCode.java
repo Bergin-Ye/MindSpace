@@ -59,8 +59,12 @@ public enum ResultCode {
     AI_SERVICE_ERROR(3001, "AI 服务调用失败"),
     AI_RESPONSE_INVALID(3002, "AI 返回内容格式错误"),
     DOCUMENT_NOT_PARSED(3003, "文档尚未解析，请先解析正文"),
-    AI_NOT_CONFIGURED(3004, "AI 服务未配置");
+    AI_NOT_CONFIGURED(3004, "AI 服务未配置"),
 
+    /*向量化相关*/
+    EMBEDDING_SERVICE_ERROR(3005, "向量化服务调用失败"),
+    EMBEDDING_RESPONSE_INVALID(3006, "向量化返回格式错误"),
+    EMBEDDING_NOT_CONFIGURED(3007, "向量化服务未配置");
     private final Integer code;
     private final String message;
 

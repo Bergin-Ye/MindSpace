@@ -98,6 +98,8 @@
 | DOC-10 | POST | `/api/documents/{id}/parse-async` | 提交异步解析 | 是 |
 | DOC-11 | GET | `/api/documents/{id}/parse-status` | 查询解析状态 | 是 |
 | DOC-12 | GET | `/api/documents/search` | 全文检索 / 高级搜索 | 是 |
+| DOC-13 | POST | `/api/documents/{id}/embed` | 文档分块并向量化入库 | 是 |
+| DOC-14 | GET | `/api/documents/vector-search` | 向量语义检索 | 是 |
 | AI-01 | POST | `/api/documents/{id}/analyze` | AI 摘要、关键词、分类 | 是 |
 
 ---
@@ -645,6 +647,9 @@
 | 3002 | AI 返回内容格式错误 | AI 分析 |
 | 3003 | 文档尚未解析 | AI 分析 |
 | 3004 | AI 服务未配置 | AI 分析 |
+| 3005 | 向量化服务调用失败 | 向量化 |
+| 3006 | 向量化返回格式错误 | 向量化 |
+| 3007 | 向量化服务未配置 | 向量化 |
 
 错误码分段规则：
 
@@ -945,7 +950,7 @@ form-data 参数：
 
 ---
 
-## 17. 文件管理接口（DOC-03 ~ DOC-12）
+## 17. 文件管理接口（DOC-03 ~ DOC-14）
 
 ### 17.1 DOC-03 文件分页列表
 
@@ -1346,6 +1351,113 @@ GET /api/documents/search?knowledgeBaseId=1&keyword=Spring&fileType=pdf&startTim
 - 没有 keyword 时就是普通的高级筛选，按 `create_time` 倒序。
 - `textSnippet` 是正文中关键词附近的一段，前端可以自行做高亮。
 - 只返回当前用户、当前知识库下未删除的文档。
+
+### 17.11 DOC-13 文档分块并向量化
+
+| 项 | 内容 |
+|---|---|
+| 方法 | POST |
+| 路径 | `/api/documents/{id}/embed` |
+| 认证 | 必须 |
+| 请求体 | 无 |
+
+说明：要求文档已经解析成功（`processStatus=SUCCESS`）且正文不为空。服务会把正文按固定大小切块，逐块调用 embedding 模型，把向量写入 `document_chunk` 表。重复调用会先删除该文档的旧 chunk，再重新写入。
+
+切块规则：
+
+- 每块默认 500 个字符；
+- 相邻块重叠 100 个字符；
+- 单篇文档默认最多 200 块，避免一次调用太多 embedding。
+
+成功响应：
+
+```json
+{
+  "code": 200,
+  "message": "success",
+  "data": {
+    "documentId": 13,
+    "chunkCount": 4,
+    "embeddingDim": 1024,
+    "elapsedMs": 1234
+  }
+}
+```
+
+失败场景：
+
+| 条件 | code | message |
+|---|---|---|
+| 文件不存在或不属于自己 | 2013 | 文件不存在 |
+| 文档尚未解析成功 / 正文为空 | 3003 | 文档尚未解析，请先解析正文 |
+| 向量化服务未配置 | 3007 | 向量化服务未配置 |
+| 向量化服务调用失败 / 超时 | 3005 | 向量化服务调用失败 |
+| 向量化返回格式错误 | 3006 | 向量化返回格式错误 |
+
+说明：
+
+- embedding 服务通过环境变量配置：`EMBEDDING_BASE_URL`、`EMBEDDING_API_KEY`、`EMBEDDING_MODEL`。
+- 默认按本地 Ollama 的 OpenAI 兼容接口配置，模型 `bge-m3`；也可以换成 OpenAI `text-embedding-3-small`。
+- 向量以 JSON 数组字符串存储在 MySQL 的 `document_chunk.embedding` 字段里，不依赖 Redis 或向量数据库。
+
+### 17.12 DOC-14 向量语义检索
+
+| 项 | 内容 |
+|---|---|
+| 方法 | GET |
+| 路径 | `/api/documents/vector-search` |
+| 认证 | 必须 |
+
+查询参数：
+
+| 参数 | 类型 | 必填 | 默认 | 说明 |
+|---|---|---|---|---|
+| knowledgeBaseId | Long | 是 | — | 知识库 id |
+| query | String | 是 | — | 自然语言问题或关键词 |
+| topK | int | 否 | 5 | 返回最相似的前 K 个 chunk，最大 20 |
+
+请求示例：
+
+```
+GET /api/documents/vector-search?knowledgeBaseId=1&query=Spring%20Boot%20自动配置原理&topK=5
+```
+
+成功响应：
+
+```json
+{
+  "code": 200,
+  "message": "success",
+  "data": [
+    {
+      "documentId": 13,
+      "originalName": "Spring Boot 指南.pdf",
+      "chunkId": 88,
+      "chunkIndex": 2,
+      "content": "Spring Boot 的自动配置通过 @EnableAutoConfiguration ...",
+      "score": 0.8732
+    }
+  ]
+}
+```
+
+失败场景：
+
+| 条件 | code | message |
+|---|---|---|
+| 知识库不存在或不属于自己 | 2001 | 知识库不存在 |
+| query 为空 | 400 | 查询内容不能为空 |
+| topK 超出范围 | 400 | topK 必须在 1 到 20 之间 |
+| 向量化服务未配置 | 3007 | 向量化服务未配置 |
+| 向量化服务调用失败 | 3005 | 向量化服务调用失败 |
+| 向量化返回格式错误 | 3006 | 向量化返回格式错误 |
+
+说明：
+
+- 先把 query 向量化，再和该知识库下所有文档 chunk 的向量算余弦相似度，按分数从高到低返回 topK。
+- 只检索 `processStatus=SUCCESS`、未删除、属于当前用户当前知识库的文档。
+- 当前用 Java 在内存里算余弦相似度，单次最多加载 5000 个 chunk；数据量大时再换向量数据库。
+- 使用前需要先对文档调用 DOC-13 做向量化，否则结果为空。
 
 
 
